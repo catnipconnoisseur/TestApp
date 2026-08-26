@@ -11,7 +11,7 @@ This file tracks the evolving high-level roadmap for the 10-day Act Phase challe
 | Ticket | Name | Status | Purpose / Focus | Dependencies |
 | :--- | :--- | :--- | :--- | :--- |
 | **T001** | **Baseline App Structure** | `Complete` | SwiftUI app lifecycle, baseline UI, VoiceOver navigation | None |
-| **T002** | **Live Camera Preview** | `Planned` | AVFoundation camera feed, permission handling, visual input | T001 |
+| **T002** | **Live Camera Preview** | `In Progress` | AVFoundation camera feed, permission handling, visual input | T001 |
 | **T003** | **Vision Classification Baseline (Banknotes)** | `Planned` | Built-in Vision request on structured banknotes | T002 |
 | **T004** | **Spoken Accessibility Output (Voice/Audio)** | `Planned` | Speech synthesis / accessible readout of results | T003 |
 | **T005** | **Vision Exploration on Local Spices** | `Planned` | Test Vision limits on ambiguous items (turmeric, etc.) | T003 |

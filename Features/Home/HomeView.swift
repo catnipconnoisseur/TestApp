@@ -4,14 +4,7 @@ struct HomeView: View {
     
     // MARK: - State
     
-    /// Represents the high-level UI state.
-    /// Kept intentionally minimal: idle vs. displaying a result.
-    enum AppState {
-        case idle
-        case result(String)
-    }
-    
-    @State private var appState: AppState = .idle
+    @State private var isPresentingCamera = false
     
     // MARK: - Body
     
@@ -25,10 +18,8 @@ struct HomeView: View {
             
             Spacer()
             
-            // Placeholder Result Area (visible only when in result state)
-            if case .result(let message) = appState {
-                resultSection(message: message)
-            }
+            // Instructions / Info Card
+            infoCardSection
             
             Spacer()
             
@@ -39,6 +30,9 @@ struct HomeView: View {
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground))
+        .fullScreenCover(isPresented: $isPresentingCamera) {
+            CameraView()
+        }
     }
     
     // MARK: - Subviews
@@ -63,12 +57,35 @@ struct HomeView: View {
         .accessibilityLabel("TestApp. Identify what's in front of you.")
     }
     
+    private var infoCardSection: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "camera.viewfinder")
+                .font(.title)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            
+            Text("Live Visual Input")
+                .font(.headline)
+            
+            Text("Point your camera at an object or banknote to view the live preview.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(.secondarySystemBackground))
+        )
+        .accessibilityElement(children: .combine)
+    }
+    
     private var identifyButton: some View {
         Button {
-            // Placeholder action to verify state transition
-            appState = .result("Baseline working. Camera not connected yet.")
+            isPresentingCamera = true
         } label: {
-            Label("Identify", systemImage: "camera.viewfinder")
+            Label("Open Camera", systemImage: "camera.fill")
                 .font(.title3)
                 .fontWeight(.semibold)
                 .frame(maxWidth: .infinity)
@@ -76,22 +93,8 @@ struct HomeView: View {
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
-        .accessibilityLabel("Identify")
-        .accessibilityHint("Simulates object identification. Camera will be connected in a future ticket.")
-    }
-    
-    private func resultSection(message: String) -> some View {
-        Text(message)
-            .font(.title2)
-            .fontWeight(.medium)
-            .multilineTextAlignment(.center)
-            .padding(20)
-            .frame(maxWidth: .infinity)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(.secondarySystemBackground))
-            )
-            .accessibilityLabel("Result: \(message)")
+        .accessibilityLabel("Open Camera")
+        .accessibilityHint("Opens the full-screen camera preview to capture visual input.")
     }
 }
 
