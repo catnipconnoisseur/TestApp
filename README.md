@@ -53,8 +53,7 @@ TestApp/
 │       └── T001-Baseline.md
 │
 ├── AI/
-│   ├── AGENTS.md
-│   └── AI_CONTEXT.md
+│   └── AGENTS.md
 │
 └── README.md
 ```
