@@ -286,13 +286,13 @@ TestApp/
 │   ├── ROADMAP.md
 │   ├── T001-Baseline/
 │   │   └── T001-Baseline.md
+│   ├── T002-Camera/
+│   │   └── T002-Camera.md
 │   └── ...
-│
-├── AI/
-│   └── AGENTS.md
 │
 ├── Resources/
 │
+├── AGENTS.md
 └── README.md
 ```
 

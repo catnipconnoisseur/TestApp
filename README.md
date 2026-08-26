@@ -49,12 +49,13 @@ TestApp/
 │
 ├── Tickets/
 │   ├── ROADMAP.md
-│   └── T001-Baseline/
-│       └── T001-Baseline.md
+│   ├── T001-Baseline/
+│   │   └── T001-Baseline.md
+│   ├── T002-Camera/
+│   │   └── T002-Camera.md
+│   └── ...
 │
-├── AI/
-│   └── AGENTS.md
-│
+├── AGENTS.md                          # Persistent context & architecture guidelines
 └── README.md
 ```
 
@@ -65,7 +66,7 @@ TestApp/
 Development progresses incrementally using a ticket-based workflow. See [`Tickets/ROADMAP.md`](Tickets/ROADMAP.md) for full roadmap details.
 
 - [x] **T001 — Baseline App Structure** (`Complete`)
-- [ ] **T002 — Live Camera Preview** (`Planned`)
+- [x] **T002 — Live Camera Preview** (`Complete`)
 - [ ] **T003 — Vision Classification Baseline (Banknotes)** (`Planned`)
 - [ ] **T004 — Spoken Accessibility Output (Voice/Audio)** (`Planned`)
 - [ ] **T005 — Vision Exploration on Local Spices** (`Planned`)
