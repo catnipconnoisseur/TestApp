@@ -49,10 +49,8 @@ TestApp/
 │
 ├── Tickets/
 │   ├── ROADMAP.md
-│   ├── T001-Baseline/
-│   │   └── T001-Baseline.md
-│   ├── T002-Camera/
-│   │   └── T002-Camera.md
+│   ├── T001-Baseline.md
+│   ├── T002-Camera.md
 │   └── ...
 │
 ├── AGENTS.md                          # Persistent context & architecture guidelines

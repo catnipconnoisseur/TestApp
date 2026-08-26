@@ -284,10 +284,8 @@ TestApp/
 │
 ├── Tickets/
 │   ├── ROADMAP.md
-│   ├── T001-Baseline/
-│   │   └── T001-Baseline.md
-│   ├── T002-Camera/
-│   │   └── T002-Camera.md
+│   ├── T001-Baseline.md
+│   ├── T002-Camera.md
 │   └── ...
 │
 ├── Resources/
@@ -309,7 +307,7 @@ Do not create empty folders prematurely. Only create a feature folder when that 
 
 # 12. Ticket Documentation Template
 
-Every ticket has its own Markdown file (`Tickets/TXXX-Name/TXXX-Name.md`).
+Every ticket has its own Markdown file directly under `Tickets/` (`Tickets/TXXX-Name.md`).
 
 ```markdown
 # TXXX — Ticket Name
