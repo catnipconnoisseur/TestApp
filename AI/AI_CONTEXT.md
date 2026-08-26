@@ -113,7 +113,21 @@ We use a **hybrid ticket development system**:
 
 ---
 
-# 7. Current Development State
+# 7. Git Workflow
+
+This is a **solo development project**. The Git workflow remains intentionally simple:
+
+```text
+Ticket → Implement → Test → Commit → main
+```
+
+* Single primary branch: `main`.
+* No per-ticket branch proliferation. Use branches only for isolated, risky architectural spikes.
+* Commit format: `TXXX: Meaningful description of change` (e.g. `T001: Establish baseline SwiftUI app`).
+
+---
+
+# 8. Current Development State
 
 * **Active Ticket:** **T001 — Baseline App Structure** `[Complete]`
 * **Next Ready Ticket:** **T002 — Live Camera Preview** `[Planned]`

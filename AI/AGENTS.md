@@ -381,14 +381,38 @@ When working on this project:
 
 ---
 
-# 14. Current Development State
+# 14. Git Workflow
+
+This is a **solo development project**. The Git workflow remains intentionally simple:
+
+```text
+Ticket → Implement → Test → Commit → main
+```
+
+### Branch Strategy
+* Use a single primary branch: `main`.
+* Do NOT create separate branches for every ticket by default.
+* Use a separate branch (e.g. `experiment/...`) only for risky architectural spikes or potentially breaking changes that need isolation.
+
+### Commit Format
+Use meaningful commit messages prefixed with the ticket or context:
+* `T001: Establish baseline SwiftUI app`
+* `T001: Add accessibility validation`
+* `T002: Add live camera preview`
+* Avoid vague messages like `update`, `fix`, or `changes`.
+
+> **Rule:** One developer → one main branch → one ticket at a time → meaningful commits.
+
+---
+
+# 15. Current Development State
 
 * **Active Ticket:** **T001 — Baseline App Structure** `[Complete]`
 * **Next Ready Ticket:** **T002 — Live Camera Preview** `[Planned]`
 
 ---
 
-# 15. Source of Truth
+# 16. Source of Truth
 
 When information conflicts:
 
