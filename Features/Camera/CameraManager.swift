@@ -7,7 +7,7 @@ final class CameraManager {
     
     // MARK: - Authorization State
     
-    enum CameraStatus {
+    enum CameraStatus: Equatable {
         case unconfigured
         case unauthorized
         case ready
@@ -21,6 +21,7 @@ final class CameraManager {
     let captureSession = AVCaptureSession()
     
     private let sessionQueue = DispatchQueue(label: "com.testapp.camera.sessionQueue")
+    private var isConfigured = false
     
     // MARK: - Initialization
     
@@ -32,14 +33,12 @@ final class CameraManager {
     func requestAccessAndSetup() {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
-            status = .ready
-            setupSession()
+            setupAndStartSession()
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
                 DispatchQueue.main.async {
                     if granted {
-                        self?.status = .ready
-                        self?.setupSession()
+                        self?.setupAndStartSession()
                     } else {
                         self?.status = .unauthorized
                     }
@@ -54,14 +53,26 @@ final class CameraManager {
     
     // MARK: - Session Configuration
     
-    private func setupSession() {
+    private func setupAndStartSession() {
         sessionQueue.async { [weak self] in
             guard let self = self else { return }
+            
+            if self.isConfigured {
+                self.startSessionRunning()
+                DispatchQueue.main.async {
+                    self.status = .ready
+                }
+                return
+            }
             
             self.captureSession.beginConfiguration()
             self.captureSession.sessionPreset = .photo
             
-            guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
+            // Query for back camera, fallback to any available video device
+            let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
+                ?? AVCaptureDevice.default(for: .video)
+            
+            guard let camera = camera else {
                 DispatchQueue.main.async {
                     self.status = .unavailable
                 }
@@ -89,18 +100,20 @@ final class CameraManager {
             }
             
             self.captureSession.commitConfiguration()
-            self.startSession()
+            self.isConfigured = true
+            self.startSessionRunning()
+            
+            DispatchQueue.main.async {
+                self.status = .ready
+            }
         }
     }
     
     // MARK: - Session Lifecycle
     
-    func startSession() {
-        sessionQueue.async { [weak self] in
-            guard let self = self else { return }
-            if !self.captureSession.isRunning {
-                self.captureSession.startRunning()
-            }
+    private func startSessionRunning() {
+        if !captureSession.isRunning {
+            captureSession.startRunning()
         }
     }
     

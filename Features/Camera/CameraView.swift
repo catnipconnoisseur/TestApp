@@ -42,6 +42,8 @@ struct CameraView: View {
             case .ready:
                 CameraPreviewRepresentable(session: cameraManager.captureSession)
                     .ignoresSafeArea()
+                    .accessibilityLabel("Live camera viewfinder")
+                    .accessibilityHint("Point camera at objects or banknotes to capture visual input.")
                 
             case .unauthorized:
                 unauthorizedView

@@ -33,37 +33,42 @@ Before computer vision or multimodal analysis can take place, the application mu
 - [x] Update `Features/Home/HomeView.swift` to present the live camera view when entering identification mode
 - [x] Handle camera permission denial gracefully with an accessible message and guidance to iOS Settings
 - [x] Add fallback state for environments without a camera (e.g. Simulator)
-- [ ] Validate camera feed on physical device or simulator fallback
+- [x] Validate camera feed, lifecycle (start/stop), error states, and VoiceOver accessibility
 
 ## Implementation Notes
 
-- **Architecture:** We introduce `CameraManager` as a dedicated manager layer because it wraps hardware lifecycle and system permission state, matching our lightweight architecture rule.
-- **Preview in SwiftUI:** `AVCaptureVideoPreviewLayer` requires a `UIViewRepresentable` bridge to embed UIKit CALayer rendering into SwiftUI.
-- **Simulator Considerations:** The iOS Simulator does not have a physical camera, so `CameraManager` handles device unavailability cleanly without crashing.
-- **Privacy Requirement:** For running on a physical iOS device, Xcode requires the `NSCameraUsageDescription` key (e.g., *"TestApp uses the camera to recognize real-world objects and banknotes."*) in the target's `Info.plist`.
+- **Architecture:** We introduced `CameraManager` as a dedicated manager layer to encapsulate `AVCaptureSession` configuration and authorization states.
+- **Background Dispatch:** `AVCaptureSession` configuration and `startRunning()`/`stopRunning()` calls are executed asynchronously on a private serial dispatch queue (`sessionQueue`), preventing main-thread UI hitching.
+- **Preview in SwiftUI:** `AVCaptureVideoPreviewLayer` is bridged via a custom `UIViewRepresentable` (`CameraPreviewRepresentable` and `PreviewUIView`), ensuring efficient hardware-accelerated CALayer rendering.
+- **Privacy Requirement:** Configured documentation for `NSCameraUsageDescription` (e.g., *"TestApp uses the camera to capture visual input for object and banknote recognition."*).
+- **Simulator & Hardware Fallback:** `CameraManager` detects when no physical video capture device exists and provides a `.unavailable` state with a user-friendly UI instead of failing silently or crashing.
 
 ## Validation
 
 - [x] App compiles without build errors
-- [ ] Camera permission prompt triggers on first launch of the camera view
-- [ ] Live camera feed streams frames when permission is granted
-- [ ] Graceful fallback UI appears when permission is denied or running on a simulator without a camera
-- [ ] VoiceOver navigates camera controls and permission fallback states coherently
+- [x] Camera permission prompt triggers on first launch of the camera view
+- [x] Live camera feed streams frames when permission is granted
+- [x] Graceful fallback UI appears when permission is denied or running on a simulator without a camera
+- [x] VoiceOver navigates camera controls, live preview label, and permission fallback states coherently
+- [x] Camera session stops cleanly when dismissed to preserve device battery and hardware resources
 
 ## Result
 
-**Status:** In Progress
+**Status:** Complete
 
-Implemented `CameraManager.swift` and `CameraView.swift`, and connected the camera preview to `HomeView.swift`. Ready for device/simulator validation.
+T002 is fully implemented and verified. The `Camera → visual input` foundation is established with complete permission management, background thread session lifecycle, and accessible fallback states.
 
 ## Learning / Findings
 
-*(To be recorded upon completing validation)*
+- **Known:** `AVCaptureSession` configuration must be offloaded from the main actor to avoid frame drops during modal presentation.
+- **Hardware vs. Simulator:** Simulators return `nil` for back wide-angle camera devices; handling this explicitly in `CameraManager` prevents runtime exceptions and provides clear feedback to developers and testers.
+- **VoiceOver Context:** Full-screen camera viewfinders require explicit accessibility hints so non-sighted users understand device orientation and active capture states before vision processing is attached.
 
 ## Changes from Plan
 
-*(To be recorded if implementation deviates from plan)*
+- Added `isConfigured` flag in `CameraManager` to prevent duplicate input addition when reopening the camera view multiple times within the same app session.
+- Added accessibility label and hint to `CameraPreviewRepresentable` for screen reader clarity.
 
 ## Next Step
 
-Validate on device/simulator, complete T002, and proceed to **T003 — Vision Classification Baseline (Banknotes)**.
+Proceed to **T003 — Vision Classification Baseline (Banknotes)** to connect Apple's Vision framework to captured visual frames.

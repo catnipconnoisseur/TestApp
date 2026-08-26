@@ -407,8 +407,8 @@ Use meaningful commit messages prefixed with the ticket or context:
 
 # 15. Current Development State
 
-* **Active Ticket:** **T001 — Baseline App Structure** `[Complete]`
-* **Next Ready Ticket:** **T002 — Live Camera Preview** `[Planned]`
+* **Active Ticket:** **T002 — Live Camera Preview** `[Complete]`
+* **Next Ready Ticket:** **T003 — Vision Classification Baseline (Banknotes)** `[Planned]`
 
 ---
 
