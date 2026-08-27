@@ -12,8 +12,8 @@ This file tracks the evolving high-level roadmap for the 10-day Act Phase challe
 | :--- | :--- | :--- | :--- | :--- |
 | **T001** | **Baseline App Structure** | `Complete` | SwiftUI app lifecycle, baseline UI, VoiceOver navigation | None |
 | **T002** | **Live Camera Preview** | `Complete` | AVFoundation camera feed, permission handling, visual input | T001 |
-| **T003** | **Vision Classification Baseline (Banknotes)** | `Planned` | Built-in Vision request on structured banknotes | T002 |
-| **T004** | **Spoken Accessibility Output (Voice/Audio)** | `Planned` | Speech synthesis / accessible readout of results | T003 |
+| **T003** | **Vision Classification Baseline (Banknotes)** | `Complete` | Built-in Vision request on structured banknotes | T002 |
+| **T004** | **Spoken Accessibility Output (Voice/Audio)** | `Not Started` | Speech synthesis / accessible readout of results | T003 |
 | **T005** | **Vision Exploration on Local Spices** | `Planned` | Test Vision limits on ambiguous items (turmeric, etc.) | T003 |
 | **T006** | **Real-World Input & Uncertainty Handling** | `Planned` | Lighting/blur tests, confidence thresholds, fallback states | T005 |
 | **T007** | **Multimodal Contextual Interpretation** | `Planned` | Broader context reasoning for ambiguous visual input | T005, T006 |
@@ -22,7 +22,7 @@ This file tracks the evolving high-level roadmap for the 10-day Act Phase challe
 ---
 
 ## Status Legend
-- **Planned**: Identified as a possible future step (lightweight outline only).
+- **Planned / Not Started**: Identified as a possible future step (lightweight outline only).
 - **In Progress**: Currently being designed, implemented, or tested.
 - **Complete**: Successfully built, tested, and documented.
 - **Blocked**: Waiting on a technical/research dependency.
@@ -33,3 +33,4 @@ This file tracks the evolving high-level roadmap for the 10-day Act Phase challe
 ## Change Log
 - **2026-08-26**: Initialized roadmap; T001 completed.
 - **2026-08-27**: T002 completed and verified on device/simulator.
+- **2026-08-27**: T003 completed and empirical baseline findings documented; T004 ready as Not Started.

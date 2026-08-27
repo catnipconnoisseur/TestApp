@@ -45,6 +45,13 @@ struct CameraView: View {
                     .accessibilityLabel("Live camera viewfinder")
                     .accessibilityHint("Point camera at objects or banknotes to capture visual input.")
                 
+                // Bottom Telemetry / Observation Overlay
+                VStack {
+                    Spacer()
+                    telemetryOverlay(result: cameraManager.latestResult)
+                }
+                .ignoresSafeArea(edges: .bottom)
+                
             case .unauthorized:
                 unauthorizedView
                 
@@ -85,6 +92,119 @@ struct CameraView: View {
         .onDisappear {
             cameraManager.stopSession()
         }
+    }
+    
+    // MARK: - Telemetry / Observation Overlay
+    
+    private func telemetryOverlay(result: RecognitionResult) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            
+            HStack {
+                Text("Vision Telemetry (T003)")
+                    .font(.caption)
+                    .fontWeight(.bold)
+                    .foregroundStyle(.secondary)
+                
+                Spacer()
+                
+                if let error = result.errorMessage {
+                    Text("Error: \(error)")
+                        .font(.caption2)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.red.opacity(0.3))
+                        .foregroundStyle(.red)
+                        .clipShape(Capsule())
+                } else if result.processingTimeMs > 0 {
+                    Text("Live • \(Int(result.processingTimeMs))ms")
+                        .font(.caption2)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.green.opacity(0.3))
+                        .foregroundStyle(.green)
+                        .clipShape(Capsule())
+                } else {
+                    Text("Awaiting frames...")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            
+            Divider()
+                .background(Color.white.opacity(0.2))
+            
+            // 1. Image Classification Observation
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Classification:")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    
+                    if result.totalClassificationCount > 0 {
+                        Text("(\(result.totalClassificationCount) categories evaluated)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary.opacity(0.8))
+                    }
+                }
+                
+                if !result.classifications.isEmpty {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(result.classifications) { item in
+                            HStack {
+                                Text("• \(item.identifier)")
+                                    .font(.subheadline)
+                                    .fontWeight(item == result.classifications.first ? .semibold : .regular)
+                                    .foregroundStyle(.white)
+                                    .lineLimit(1)
+                                
+                                Spacer()
+                                
+                                Text("\(Int(item.confidence * 100))%")
+                                    .font(.caption)
+                                    .foregroundStyle(item.confidence > 0.3 ? .green : .white.opacity(0.7))
+                            }
+                        }
+                    }
+                } else {
+                    Text("No classification returned by model")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+            }
+            
+            // 2. OCR Text Observation
+            VStack(alignment: .leading, spacing: 4) {
+                Text("OCR Text:")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                
+                if !result.recognizedTexts.isEmpty {
+                    Text(result.combinedText)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.yellow)
+                        .lineLimit(2)
+                } else {
+                    Text("No text detected")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.black.opacity(0.75))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                )
+        )
+        .padding(.horizontal, 16)
+        .padding(.bottom, 24)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Vision results. Classification: \(result.topClassification?.identifier ?? "None"). Text: \(result.recognizedTexts.isEmpty ? "None" : result.combinedText)")
     }
     
     // MARK: - Fallback State Views
