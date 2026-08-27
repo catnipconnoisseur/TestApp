@@ -32,6 +32,15 @@ struct CameraPreviewRepresentable: UIViewRepresentable {
 
 struct CameraView: View {
     @State private var cameraManager = CameraManager()
+    @State private var multimodalService = MultimodalService()
+    
+    // Multimodal Sheet State
+    @State private var isAnalyzing = false
+    @State private var multimodalResult: MultimodalService.MultimodalResult?
+    @State private var showMultimodalSheet = false
+    @State private var showAPIKeySheet = false
+    @State private var apiKeyInput = MultimodalConfig.apiKey
+    
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
@@ -45,9 +54,41 @@ struct CameraView: View {
                     .accessibilityLabel("Live camera viewfinder")
                     .accessibilityHint("Point camera at objects or banknotes to capture visual input.")
                 
-                // Bottom Telemetry / Observation Overlay
-                VStack {
+                // Bottom Telemetry & Analyze Action Overlay
+                VStack(spacing: 12) {
                     Spacer()
+                    
+                    // On-Demand Multimodal Trigger Button
+                    Button {
+                        triggerMultimodalAnalysis()
+                    } label: {
+                        HStack(spacing: 8) {
+                            if isAnalyzing {
+                                ProgressView()
+                                    .tint(.white)
+                                Text("Analyzing...")
+                                    .fontWeight(.bold)
+                            } else {
+                                Image(systemName: "sparkles")
+                                    .font(.headline)
+                                Text("Analyze")
+                                    .fontWeight(.bold)
+                            }
+                        }
+                        .font(.body)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.blue)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
+                    }
+                    .disabled(isAnalyzing)
+                    .accessibilityLabel("Analyze current frame with Multimodal AI")
+                    .accessibilityHint("Captures the current view and requests detailed contextual reasoning")
+                    .padding(.horizontal, 16)
+                    
+                    // Continuous Vision Telemetry Overlay (T003)
                     telemetryOverlay(result: cameraManager.latestResult)
                 }
                 .ignoresSafeArea(edges: .bottom)
@@ -82,6 +123,19 @@ struct CameraView: View {
                     .accessibilityHint("Returns to the home screen")
                     
                     Spacer()
+                    
+                    // Local API Key Configuration Trigger
+                    Button {
+                        apiKeyInput = MultimodalConfig.apiKey
+                        showAPIKeySheet = true
+                    } label: {
+                        Image(systemName: MultimodalConfig.hasConfiguredKey ? "key.fill" : "key.slash.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .padding(16)
+                    }
+                    .accessibilityLabel(MultimodalConfig.hasConfiguredKey ? "Configure API Key" : "Set API Key (Required for Multimodal)")
+                    .accessibilityHint("Opens sheet to configure local API key")
                 }
                 Spacer()
             }
@@ -92,9 +146,166 @@ struct CameraView: View {
         .onDisappear {
             cameraManager.stopSession()
         }
+        .sheet(isPresented: $showMultimodalSheet) {
+            multimodalResultView
+        }
+        .sheet(isPresented: $showAPIKeySheet) {
+            apiKeyConfigurationView
+        }
     }
     
-    // MARK: - Telemetry / Observation Overlay
+    // MARK: - Multimodal Analysis Trigger
+    
+    private func triggerMultimodalAnalysis() {
+        guard MultimodalConfig.hasConfiguredKey else {
+            showAPIKeySheet = true
+            return
+        }
+        
+        guard let jpegData = cameraManager.captureCurrentFrameJPEG() else {
+            multimodalResult = MultimodalService.MultimodalResult(
+                text: "Unable to capture image from camera feed.",
+                latencyMs: 0.0,
+                status: .error("Capture Failed")
+            )
+            showMultimodalSheet = true
+            return
+        }
+        
+        isAnalyzing = true
+        showMultimodalSheet = true
+        multimodalResult = nil
+        
+        Task {
+            let result = await multimodalService.analyzeImage(
+                jpegData: jpegData,
+                apiKey: MultimodalConfig.apiKey
+            )
+            await MainActor.run {
+                self.multimodalResult = result
+                self.isAnalyzing = false
+            }
+        }
+    }
+    
+    // MARK: - Multimodal Result Sheet (T004)
+    
+    private var multimodalResultView: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 20) {
+                if isAnalyzing {
+                    VStack(spacing: 16) {
+                        ProgressView()
+                            .scaleEffect(1.4)
+                        Text("Analyzing image with Multimodal AI...")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Analyzing image with Multimodal AI. Please wait.")
+                } else if let result = multimodalResult {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 16) {
+                            
+                            // Status & Latency Badge
+                            HStack {
+                                switch result.status {
+                                case .success:
+                                    Label("Success", systemImage: "checkmark.circle.fill")
+                                        .font(.caption)
+                                        .fontWeight(.bold)
+                                        .foregroundStyle(.green)
+                                case .error:
+                                    Label("Error", systemImage: "exclamationmark.triangle.fill")
+                                        .font(.caption)
+                                        .fontWeight(.bold)
+                                        .foregroundStyle(.red)
+                                case .idle:
+                                    EmptyView()
+                                }
+                                
+                                Spacer()
+                                
+                                if result.latencyMs > 0 {
+                                    Text(String(format: "Latency: %.2fs", result.latencyMs / 1000.0))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding(.bottom, 4)
+                            
+                            Divider()
+                            
+                            Text("Multimodal Analysis")
+                                .font(.headline)
+                                .accessibilityAddTraits(.isHeader)
+                            
+                            Text(result.text)
+                                .font(.body)
+                                .lineSpacing(4)
+                                .accessibilityLabel("Analysis result: \(result.text)")
+                        }
+                        .padding()
+                    }
+                }
+            }
+            .navigationTitle("Multimodal Result")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        showMultimodalSheet = false
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+    
+    // MARK: - Local API Key Configuration Sheet
+    
+    private var apiKeyConfigurationView: some View {
+        NavigationStack {
+            Form {
+                Section(header: Text("API Key Configuration"), footer: Text("Your API key is stored locally on this device in private storage and is never committed or tracked in Git.")) {
+                    SecureField("Paste API Key", text: $apiKeyInput)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                }
+                
+                if MultimodalConfig.hasConfiguredKey {
+                    Section {
+                        Button(role: .destructive) {
+                            MultimodalConfig.apiKey = ""
+                            apiKeyInput = ""
+                        } label: {
+                            Text("Clear Stored Key")
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Multimodal Setup")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") {
+                        showAPIKeySheet = false
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Save") {
+                        MultimodalConfig.apiKey = apiKeyInput
+                        showAPIKeySheet = false
+                    }
+                    .disabled(apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+    
+    // MARK: - Telemetry Overlay (T003)
     
     private func telemetryOverlay(result: RecognitionResult) -> some View {
         VStack(alignment: .leading, spacing: 10) {

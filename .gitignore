@@ -23,3 +23,9 @@ Package.resolved
 .system_generated/
 *.log
 scratch/
+
+# Local Secrets & Configurations
+Config.xcconfig
+Secrets.swift
+*.secret*
+*.local

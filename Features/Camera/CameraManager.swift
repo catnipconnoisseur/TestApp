@@ -1,7 +1,9 @@
 import AVFoundation
+import CoreImage
 import SwiftUI
+import UIKit
 
-/// Manages camera authorization, AVCaptureSession lifecycle, and video frame delivery to Vision.
+/// Manages camera authorization, AVCaptureSession lifecycle, video frame delivery to Vision, and on-demand frame capture.
 @Observable
 final class CameraManager: NSObject {
     
@@ -26,8 +28,11 @@ final class CameraManager: NSObject {
     private let videoOutputQueue = DispatchQueue(label: "com.testapp.camera.videoOutputQueue", qos: .userInitiated)
     private let videoOutput = AVCaptureVideoDataOutput()
     private let visionService = VisionService()
+    private let ciContext = CIContext()
     
     private var isConfigured = false
+    private var latestPixelBuffer: CVPixelBuffer?
+    private let bufferLock = NSLock()
     
     // MARK: - Initialization
     
@@ -143,6 +148,28 @@ final class CameraManager: NSObject {
             }
         }
     }
+    
+    // MARK: - On-Demand Still Frame Capture (T004)
+    
+    /// Captures the most recent camera frame as compressed JPEG data for multimodal inspection.
+    func captureCurrentFrameJPEG(compressionQuality: CGFloat = 0.75) -> Data? {
+        bufferLock.lock()
+        guard let pixelBuffer = latestPixelBuffer else {
+            bufferLock.unlock()
+            return nil
+        }
+        
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        guard let cgImage = ciContext.createCGImage(ciImage, from: ciImage.extent) else {
+            bufferLock.unlock()
+            return nil
+        }
+        bufferLock.unlock()
+        
+        // Render in portrait orientation matching physical device holding angle
+        let image = UIImage(cgImage: cgImage, scale: 1.0, orientation: .right)
+        return image.jpegData(compressionQuality: compressionQuality)
+    }
 }
 
 // MARK: - AVCaptureVideoDataOutputSampleBufferDelegate
@@ -150,6 +177,10 @@ final class CameraManager: NSObject {
 extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        
+        bufferLock.lock()
+        self.latestPixelBuffer = pixelBuffer
+        bufferLock.unlock()
         
         visionService.processFrame(pixelBuffer) { [weak self] result in
             self?.latestResult = result

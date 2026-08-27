@@ -213,12 +213,12 @@ We use a **hybrid ticket development system**:
 | Ticket | Name | Status | Focus / Dependency |
 | :--- | :--- | :--- | :--- |
 | **T001** | **Baseline App Structure** | `Complete` | SwiftUI app lifecycle, baseline UI, VoiceOver |
-| **T002** | **Live Camera Preview** | `Planned` | AVFoundation camera feed, permission, visual input pipeline |
-| **T003** | **Vision Classification Baseline (Banknotes)** | `Planned` | Built-in Vision request on structured banknotes *(depends on T002)* |
-| **T004** | **Spoken Accessibility Output (Voice/Audio)** | `Planned` | Speech synthesis / accessible readout *(depends on T003)* |
-| **T005** | **Vision Exploration on Local Spices** | `Planned` | Test Vision limits on ambiguous items *(depends on T003)* |
-| **T006** | **Real-World Input & Uncertainty Handling** | `Planned` | Lighting/blur tests, confidence thresholds, fallback states *(depends on T005)* |
-| **T007** | **Multimodal Contextual Interpretation** | `Planned` | Broader context reasoning for ambiguous items *(depends on T005, T006)* |
+| **T002** | **Live Camera Preview** | `Complete` | AVFoundation camera feed, permission, visual input pipeline |
+| **T003** | **Vision Classification Baseline (Banknotes)** | `Complete` | Built-in Vision request on structured banknotes *(depends on T002)* |
+| **T004** | **Multimodal Understanding Baseline** | `Complete` | Compare Vision+OCR vs Multimodal contextual reasoning *(depends on T003)* |
+| **T005** | **Spoken Accessibility Output (Voice/Audio)** | `Planned` | Speech synthesis / accessible readout *(depends on T004)* |
+| **T006** | **Vision Exploration on Local Spices** | `Planned` | Test Vision limits on ambiguous items *(depends on T004)* |
+| **T007** | **Real-World Input & Uncertainty Handling** | `Planned` | Lighting/blur tests, confidence thresholds, fallback states *(depends on T006)* |
 | **T008** | **Create ML Feasibility & Evaluation** | `Planned` | Evaluate custom model need vs built-in, prepare final prototype *(depends on T007)* |
 
 *Note: Future tickets (T003+) will only be specified in detail when they become active and will be updated based on experimental findings.*
@@ -393,21 +393,21 @@ Ticket → Implement → Test → Commit → main
 * Use a separate branch (e.g. `experiment/...`) only for risky architectural spikes or potentially breaking changes that need isolation.
 
 ### Commit Format & Guidelines
-* **No Ticket Numbers:** Do NOT mention ticket numbers (e.g. `T001:`, `T002:`, `[T003]`) in Git commit messages or PR descriptions. Keep commit messages concise, descriptive, and focused purely on the technical change (e.g., `Add live camera preview and handle permissions`, `Establish baseline SwiftUI home view`).
+* **STRICT RULE: Zero Ticket Numbers:** NEVER include ticket numbers (e.g. `T001`, `T002`, `T003`, `T004`, `[T004]`, `T004:`, etc.) in ANY Git commit message or PR description, under ANY circumstances, even if a prompt or draft suggests a message containing one. ALWAYS strip out ticket identifiers and keep only the clear technical description (e.g. `feat: complete multimodal understanding baseline`, `Establish Vision classification baseline`).
 * Avoid vague messages like `update`, `fix`, or `changes`.
 
 ### Commit & Push Permission Rule
 * **CRITICAL:** Do NOT automatically commit or push changes to Git/GitHub unless the user explicitly asks you to do so (e.g., "commit and push", "push this to GitHub").
 * Always wait for the user's explicit instruction before executing any `git commit` or `git push` commands.
 
-> **Rule:** One developer → one main branch → descriptive commits WITHOUT ticket numbers → commit/push ONLY when explicitly requested.
+> **Rule:** One developer → one main branch → descriptive commits STRICTLY WITHOUT ticket numbers (no T001, T002, T003, T004, etc.) → commit/push ONLY when explicitly requested.
 
 ---
 
 # 15. Current Development State
 
-* **Active Ticket:** **T002 — Live Camera Preview** `[Complete]`
-* **Next Ready Ticket:** **T003 — Vision Classification Baseline (Banknotes)** `[Planned]`
+* **Active Ticket:** **T004 — Multimodal Understanding Baseline** `[Complete]`
+* **Next Ready Ticket:** **T005 — Spoken Accessibility Output (Voice/Audio)** `[Planned]`
 
 ---
 
