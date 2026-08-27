@@ -392,14 +392,11 @@ Ticket → Implement → Test → Commit → main
 * Do NOT create separate branches for every ticket by default.
 * Use a separate branch (e.g. `experiment/...`) only for risky architectural spikes or potentially breaking changes that need isolation.
 
-### Commit Format
-Use meaningful commit messages prefixed with the ticket or context:
-* `T001: Establish baseline SwiftUI app`
-* `T001: Add accessibility validation`
-* `T002: Add live camera preview`
-* Avoid vague messages like `update`, `fix`, or `changes`.
+### Commit & Push Permission Rule
+* **CRITICAL:** Do NOT automatically commit or push changes to Git/GitHub unless the user explicitly asks you to do so (e.g., "commit and push", "push this to GitHub").
+* Always wait for the user's explicit instruction before executing any `git commit` or `git push` commands.
 
-> **Rule:** One developer → one main branch → one ticket at a time → meaningful commits.
+> **Rule:** One developer → one main branch → one ticket at a time → commit/push ONLY when explicitly requested.
 
 ---
 

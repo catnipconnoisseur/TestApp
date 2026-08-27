@@ -32,3 +32,4 @@ This file tracks the evolving high-level roadmap for the 10-day Act Phase challe
 
 ## Change Log
 - **2026-08-26**: Initialized roadmap; T001 completed.
+- **2026-08-27**: T002 completed and verified on device/simulator.
