@@ -59,7 +59,7 @@ TestApp/
 
 ## 📋 Development Roadmap
 
-Development progresses incrementally across focused milestones. See [`Tickets/ROADMAP.md`](Tickets/ROADMAP.md) for full roadmap details.
+Development progresses incrementally across focused milestones. See [`ROADMAP.md`](Tickets/ROADMAP.md) for full roadmap details.
 
 - [x] **Baseline App Structure** (`Complete`)
 - [x] **Live Camera Preview** (`Complete`)
