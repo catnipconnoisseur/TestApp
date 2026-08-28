@@ -1,6 +1,6 @@
 # TestApp
 
-> An Apple Developer Academy Act Phase learning project exploring visual accessibility using Apple visual technologies.
+> An accessibility-focused project investigating how computer vision, OCR, and multimodal AI can help people understand the world around them.
 
 ---
 
