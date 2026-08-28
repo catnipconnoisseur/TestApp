@@ -99,35 +99,36 @@ final class CameraManager: NSObject {
                     self.captureSession.addInput(input)
                 } else {
                     DispatchQueue.main.async {
-                        self.status = .failed("Cannot add camera input to session.")
+                        self.status = .failed("Unable to add camera video input to capture session.")
                     }
                     self.captureSession.commitConfiguration()
                     return
                 }
                 
-                // Configure Video Data Output for Vision processing
+                // Configure video data output for Vision processing
+                self.videoOutput.alwaysDiscardsLateVideoFrames = true
+                self.videoOutput.videoSettings = [
+                    kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA)
+                ]
+                
                 if self.captureSession.canAddOutput(self.videoOutput) {
-                    self.videoOutput.alwaysDiscardsLateVideoFrames = true
-                    self.videoOutput.videoSettings = [
-                        kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
-                    ]
-                    self.videoOutput.setSampleBufferDelegate(self, queue: self.videoOutputQueue)
                     self.captureSession.addOutput(self.videoOutput)
+                    self.videoOutput.setSampleBufferDelegate(self, queue: self.videoOutputQueue)
+                }
+                
+                self.captureSession.commitConfiguration()
+                self.isConfigured = true
+                
+                self.startSessionRunning()
+                
+                DispatchQueue.main.async {
+                    self.status = .ready
                 }
             } catch {
                 DispatchQueue.main.async {
-                    self.status = .failed(error.localizedDescription)
+                    self.status = .failed("Camera setup error: \(error.localizedDescription)")
                 }
                 self.captureSession.commitConfiguration()
-                return
-            }
-            
-            self.captureSession.commitConfiguration()
-            self.isConfigured = true
-            self.startSessionRunning()
-            
-            DispatchQueue.main.async {
-                self.status = .ready
             }
         }
     }
@@ -149,17 +150,24 @@ final class CameraManager: NSObject {
         }
     }
     
-    // MARK: - On-Demand Still Frame Capture (T004)
+    // MARK: - On-Demand Still Frame Capture (T004 / T005 High-Speed Optimization)
     
-    /// Captures the most recent camera frame as compressed JPEG data for multimodal inspection.
-    func captureCurrentFrameJPEG(compressionQuality: CGFloat = 0.75) -> Data? {
+    /// Captures the most recent camera frame, downscaling to max 1024px for high-speed network transmission and AI reasoning.
+    func captureCurrentFrameJPEG(maxDimension: CGFloat = 1024.0, compressionQuality: CGFloat = 0.60) -> Data? {
         bufferLock.lock()
         guard let pixelBuffer = latestPixelBuffer else {
             bufferLock.unlock()
             return nil
         }
         
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        var ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        let extent = ciImage.extent
+        let maxSide = max(extent.width, extent.height)
+        if maxSide > maxDimension {
+            let scale = maxDimension / maxSide
+            ciImage = ciImage.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        }
+        
         guard let cgImage = ciContext.createCGImage(ciImage, from: ciImage.extent) else {
             bufferLock.unlock()
             return nil
@@ -183,7 +191,9 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         bufferLock.unlock()
         
         visionService.processFrame(pixelBuffer) { [weak self] result in
-            self?.latestResult = result
+            DispatchQueue.main.async {
+                self?.latestResult = result
+            }
         }
     }
 }

@@ -12,7 +12,7 @@ final class VisionService: @unchecked Sendable {
     
     // MARK: - Public Interface
     
-    /// Processes a pixel buffer and returns the raw classification & OCR observation results.
+    /// Processes a pixel buffer and returns the raw classification, OCR, and feature print observations.
     func processFrame(_ pixelBuffer: CVPixelBuffer, completion: @escaping (RecognitionResult) -> Void) {
         visionQueue.async { [weak self] in
             guard let self = self else { return }
@@ -39,14 +39,16 @@ final class VisionService: @unchecked Sendable {
             textRequest.recognitionLevel = .accurate
             textRequest.usesLanguageCorrection = false
             
+            // 3. Built-in Feature Print Embedding Request (Visual Fingerprint)
+            let featurePrintRequest = VNGenerateImageFeaturePrintRequest()
+            
             do {
-                try requestHandler.perform([classifyRequest, textRequest])
+                try requestHandler.perform([classifyRequest, textRequest, featurePrintRequest])
                 
                 // Parse Image Classification observations
                 if let observations = classifyRequest.results {
                     result.totalClassificationCount = observations.count
                     
-                    // Take top 3 predictions directly sorted by confidence without invalid precision filtering
                     let topItems = observations
                         .prefix(3)
                         .map { RecognitionResult.ClassificationItem(identifier: $0.identifier, confidence: $0.confidence) }
@@ -64,6 +66,12 @@ final class VisionService: @unchecked Sendable {
                         .prefix(5)
                     
                     result.recognizedTexts = Array(topTexts)
+                }
+                
+                // Parse Feature Print observation
+                if let fpObservations = featurePrintRequest.results as? [VNFeaturePrintObservation],
+                   let firstFP = fpObservations.first {
+                    result.featurePrint = firstFP
                 }
                 
                 let endTime = CFAbsoluteTimeGetCurrent()

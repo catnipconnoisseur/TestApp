@@ -18,10 +18,15 @@ final class MultimodalService: Sendable {
         var status: ResponseStatus = .idle
     }
     
-    // MARK: - Controlled General-Purpose Test Prompt
+    // MARK: - Structured Plain-Text Accessibility Prompt
     
     static let defaultPrompt = """
-    Identify and describe the main object visible in this image. Explain briefly what visual characteristics support your identification. If the identification is uncertain, say so and mention the most plausible alternatives. Do not assume the object belongs to a particular category unless the visual evidence supports it. Focus on information that would be useful to a person who cannot see the image themselves. Keep the response concise.
+    Identify and describe the main object visible in this image for an accessibility assistant.
+    Return plain text only without any Markdown syntax (do not use asterisks, bold markers, bullet points, or empty placeholders like ****).
+    Provide your answer strictly in two labeled sections:
+
+    HEADLINE: <A concise 1 to 4 word name of the object, e.g. "Shaker Bottle", "Rp50,000 Indonesian Banknote", "Galangal">
+    DESCRIPTION: <A concise 2 to 3 sentence explanation describing key visual characteristics, shape, texture, color, and plausible alternatives if ambiguous.>
     """
     
     // MARK: - Execution
@@ -74,7 +79,7 @@ final class MultimodalService: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 25.0
+        request.timeoutInterval = 15.0
         
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: payload)

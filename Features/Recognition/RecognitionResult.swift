@@ -1,4 +1,5 @@
 import Foundation
+import Vision
 
 /// Represents the raw visual observations produced by Apple's Vision framework.
 /// Kept intentionally generic so it can represent banknotes, spices, and everyday objects.
@@ -27,6 +28,7 @@ struct RecognitionResult: Equatable {
     var classifications: [ClassificationItem] = []
     var totalClassificationCount: Int = 0
     var recognizedTexts: [RecognizedTextItem] = []
+    var featurePrint: VNFeaturePrintObservation? = nil
     var errorMessage: String? = nil
     var processingTimeMs: Double = 0.0
     var timestamp: Date = Date()
@@ -46,5 +48,14 @@ struct RecognitionResult: Equatable {
     /// Indicates whether any observations or text were made
     var hasObservations: Bool {
         !classifications.isEmpty || !recognizedTexts.isEmpty
+    }
+    
+    // MARK: - Equatable
+    
+    static func == (lhs: RecognitionResult, rhs: RecognitionResult) -> Bool {
+        lhs.classifications == rhs.classifications &&
+        lhs.recognizedTexts == rhs.recognizedTexts &&
+        lhs.errorMessage == rhs.errorMessage &&
+        lhs.timestamp == rhs.timestamp
     }
 }
