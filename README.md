@@ -30,28 +30,26 @@ TestApp/
 │
 ├── Features/
 │   ├── Home/
-│   │   ├── HomeView.swift
-│   │   └── HomeViewModel.swift        # Only when justified
+│   │   └── HomeView.swift
 │   │
 │   ├── Camera/
 │   │   ├── CameraView.swift
-│   │   ├── CameraViewModel.swift      # Only when justified
 │   │   └── CameraManager.swift
 │   │
 │   ├── Recognition/
-│   │   ├── RecognitionView.swift
-│   │   ├── RecognitionViewModel.swift # Only when justified
 │   │   ├── VisionService.swift
 │   │   └── RecognitionResult.swift
 │   │
+│   ├── Multimodal/
+│   │   ├── MultimodalService.swift
+│   │   └── MultimodalConfig.swift
+│   │
+│   ├── Interpretation/
+│   │   ├── InterpretationService.swift
+│   │   └── InterpretationResult.swift
+│   │
 │   └── Accessibility/
 │       └── SpeechManager.swift
-│
-├── Tickets/
-│   ├── ROADMAP.md
-│   ├── T001-Baseline.md
-│   ├── T002-Camera.md
-│   └── ...
 │
 ├── AGENTS.md                          # Persistent context & architecture guidelines
 └── README.md
@@ -59,15 +57,16 @@ TestApp/
 
 ---
 
-## 📋 Hybrid Ticket Roadmap
+## 📋 Development Roadmap
 
-Development progresses incrementally using a ticket-based workflow. See [`Tickets/ROADMAP.md`](Tickets/ROADMAP.md) for full roadmap details.
+Development progresses incrementally across focused milestones. See [`Tickets/ROADMAP.md`](Tickets/ROADMAP.md) for full roadmap details.
 
-- [x] **T001 — Baseline App Structure** (`Complete`)
-- [x] **T002 — Live Camera Preview** (`Complete`)
-- [ ] **T003 — Vision Classification Baseline (Banknotes)** (`Planned`)
-- [ ] **T004 — Spoken Accessibility Output (Voice/Audio)** (`Planned`)
-- [ ] **T005 — Vision Exploration on Local Spices** (`Planned`)
-- [ ] **T006 — Real-World Input & Uncertainty Handling** (`Planned`)
-- [ ] **T007 — Multimodal Contextual Interpretation** (`Planned`)
-- [ ] **T008 — Create ML Feasibility & Evaluation** (`Planned`)
+- [x] **Baseline App Structure** (`Complete`)
+- [x] **Live Camera Preview** (`Complete`)
+- [x] **Vision Classification Baseline (Banknotes)** (`Complete`)
+- [x] **Multimodal Understanding Baseline** (`Complete`)
+- [x] **Interpretation & Decision Layer** (`Complete`)
+- [ ] **Spoken Accessibility Output (Voice/Audio)** (`Planned`)
+- [ ] **Vision Exploration on Local Spices** (`Planned`)
+- [ ] **Real-World Input & Uncertainty Handling** (`Planned`)
+- [ ] **Create ML Feasibility & Evaluation** (`Planned`)
