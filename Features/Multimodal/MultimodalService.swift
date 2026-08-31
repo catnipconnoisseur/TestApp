@@ -9,7 +9,32 @@ final class MultimodalService: Sendable {
     enum ResponseStatus: Equatable {
         case idle
         case success
+        case rateLimited(Int?) // HTTP 429 with optional Retry-After seconds
+        case authenticationError(Int) // HTTP 401 / 403
+        case serverError(Int) // HTTP 5xx
+        case networkError(String)
+        case parsingError(String)
         case error(String)
+        
+        var isRateLimited: Bool {
+            if case .rateLimited = self { return true }
+            return false
+        }
+        
+        var displayTelemetryTitle: String {
+            switch self {
+            case .idle: return "Idle"
+            case .success: return "Success (200 OK)"
+            case .rateLimited(let retrySecs):
+                if let s = retrySecs { return "Rate Limited (429, retry: \(s)s)" }
+                return "Rate Limited (HTTP 429)"
+            case .authenticationError(let code): return "Auth Failed (HTTP \(code))"
+            case .serverError(let code): return "Server Error (HTTP \(code))"
+            case .networkError(let err): return "Network: \(err)"
+            case .parsingError(let err): return "Parsing: \(err)"
+            case .error(let msg): return msg
+            }
+        }
     }
     
     struct MultimodalResult: Equatable {
@@ -18,7 +43,7 @@ final class MultimodalService: Sendable {
         var status: ResponseStatus = .idle
     }
     
-    // MARK: - Structured Plain-Text Accessibility Prompt
+    // MARK: - Structured Plain-Text Accessibility Prompts
     
     static let defaultPrompt = """
     Identify and describe the main object visible in this image for an accessibility assistant.
@@ -28,6 +53,24 @@ final class MultimodalService: Sendable {
     HEADLINE: <A concise 1 to 4 word name of the object, e.g. "Shaker Bottle", "Rp50,000 Indonesian Banknote", "Galangal">
     DESCRIPTION: <A concise 2 to 3 sentence explanation describing key visual characteristics, shape, texture, color, and plausible alternatives if ambiguous.>
     """
+    
+    /// Constructs a structured, grounded multimodal prompt for an explicit spoken user question.
+    static func buildVoiceQuestionPrompt(userQuestion: String) -> String {
+        return """
+        You are an intelligent visual accessibility assistant. Analyze the provided image to answer the user's specific spoken question.
+
+        USER'S QUESTION:
+        "\(userQuestion)"
+
+        CRITICAL INSTRUCTIONS:
+        1. Answer the user's specific question directly based strictly on what is visible in the image.
+        2. Provide your response in two clearly labeled plain-text sections:
+        HEADLINE: [Concise 1 to 4 word summary or main answer, e.g. "Cooking Spice", "Rp50,000", "Price Unavailable"]
+        DESCRIPTION: [1 to 3 clear, plain-text sentences explaining the answer and visual justification]
+        3. If the question asks for information that cannot be determined from the image (such as hidden price, internal composition, or invisible dates), state clearly that it cannot be determined from the image alone without guessing.
+        4. Return plain text ONLY. Never output Markdown formatting (no asterisks **, no hashes #, no bullets, no empty **** placeholders).
+        """
+    }
     
     // MARK: - Execution
     
@@ -44,7 +87,7 @@ final class MultimodalService: Sendable {
             return MultimodalResult(
                 text: "API Key not configured. Please tap the key icon to configure your API key.",
                 latencyMs: 0.0,
-                status: .error("Missing API Key")
+                status: .authenticationError(401)
             )
         }
         
@@ -95,27 +138,32 @@ final class MultimodalService: Sendable {
             }
             
             guard httpResponse.statusCode == 200 else {
-                let userFriendlyError: String
-                switch httpResponse.statusCode {
-                case 404:
-                    userFriendlyError = "Multimodal service configuration error (404 Not Found)."
-                case 400:
-                    userFriendlyError = "Invalid request format (400 Bad Request)."
-                case 403:
-                    userFriendlyError = "Authentication failed (403 Forbidden). Please verify your API key."
-                case 429:
-                    userFriendlyError = "Rate limit reached (429). Please wait a moment."
-                case 500...599:
-                    userFriendlyError = "Remote server error (\(httpResponse.statusCode)). Please try again."
-                default:
-                    userFriendlyError = "Service returned status \(httpResponse.statusCode)."
+                if httpResponse.statusCode == 429 {
+                    let retryAfter = httpResponse.value(forHTTPHeaderField: "Retry-After").flatMap { Int($0) }
+                    return MultimodalResult(
+                        text: "Multimodal AI service is temporarily rate limited. Using on-device vision.",
+                        latencyMs: durationMs,
+                        status: .rateLimited(retryAfter)
+                    )
+                } else if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                    return MultimodalResult(
+                        text: "Authentication failed. Please verify your API key.",
+                        latencyMs: durationMs,
+                        status: .authenticationError(httpResponse.statusCode)
+                    )
+                } else if httpResponse.statusCode >= 500 {
+                    return MultimodalResult(
+                        text: "Remote server error (\(httpResponse.statusCode)).",
+                        latencyMs: durationMs,
+                        status: .serverError(httpResponse.statusCode)
+                    )
+                } else {
+                    return MultimodalResult(
+                        text: "Service returned status \(httpResponse.statusCode).",
+                        latencyMs: durationMs,
+                        status: .error("HTTP \(httpResponse.statusCode)")
+                    )
                 }
-                
-                return MultimodalResult(
-                    text: "Unable to analyze image: \(userFriendlyError)",
-                    latencyMs: durationMs,
-                    status: .error("HTTP \(httpResponse.statusCode)")
-                )
             }
             
             // Parse Gemini response structure
@@ -129,7 +177,7 @@ final class MultimodalService: Sendable {
                 return MultimodalResult(
                     text: "Unable to parse model response.",
                     latencyMs: durationMs,
-                    status: .error("Parsing failure")
+                    status: .parsingError("Malformed response JSON")
                 )
             }
             
@@ -144,7 +192,7 @@ final class MultimodalService: Sendable {
             return MultimodalResult(
                 text: "Unable to analyze image due to a network connection error.",
                 latencyMs: durationMs,
-                status: .error("Network error")
+                status: .networkError(error.localizedDescription)
             )
         }
     }

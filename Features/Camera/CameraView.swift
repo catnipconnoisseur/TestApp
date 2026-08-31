@@ -1,4 +1,5 @@
 import AVFoundation
+import Speech
 import SwiftUI
 import Vision
 
@@ -29,50 +30,67 @@ struct CameraPreviewRepresentable: UIViewRepresentable {
     }
 }
 
-// MARK: - Explicit Operational State
+// MARK: - Interaction State
 
-enum VisualUnderstandingState: String, Equatable {
-    case observing              // Live camera scanning; awaiting initial stable framing
-    case stabilizing            // Target object detected; holding steady for 0.7s
-    case analyzing              // Frame captured; Gemini request in-flight
-    case resultLocked           // Analysis result displayed; protected from frame overwrites
-    case possibleSceneChange    // Divergence detected; confirmation window running (0.35s)
-    case sceneChangeConfirmed   // Change verified; clearing old result and restarting cycle
+/// Describes the user-facing state of the voice interaction area.
+private enum InteractionState {
+    case idle
+    case listening
+    case thinking
+    case answered
+    case error(String)
 }
 
-// MARK: - SwiftUI Camera View (Multi-Signal Automatic Visual Understanding Engine)
+// MARK: - SwiftUI Camera View (Camera-First Accessible Interaction)
 
 struct CameraView: View {
     @State private var cameraManager = CameraManager()
     @State private var multimodalService = MultimodalService()
+    @State private var speechService = SpeechService()
     private let interpretationService = InterpretationService()
     
-    // Concrete Timing & Divergence Parameters
-    private let dwellRequirementSeconds: TimeInterval = 0.70
-    private let sceneChangeConfirmationSeconds: TimeInterval = 0.35
-    private let autoRequestCooldown: TimeInterval = 2.0
+    // Continuous Scene Divergence Tracking
     private let divergenceThreshold: Float = 0.50
+    private let sceneChangeConfirmationSeconds: TimeInterval = 0.35
     
-    // Explicit Operational State Machine
-    @State private var operationalState: VisualUnderstandingState = .observing
-    
-    // Reference Scene Snapshot & Divergence Tracking
+    // State Tracking
     @State private var lastAnalyzedScene: AnalyzedSceneReference?
     @State private var sceneDivergenceStartTime: Date?
-    @State private var observationStartTime: Date?
     @State private var lastVisualObservationTime: Date = Date()
+    @State private var hasActiveMultimodalResult: Bool = false
+    
+    // Request State & In-Flight Guards
     @State private var isRequestInFlight = false
+    @State private var isProcessingVoiceQuery = false
     @State private var lastRequestTimestamp: Date = .distantPast
+    @State private var lastTriggerType: String = "None"
+    
+    // Speech Input & Voice Snapshot State
+    @State private var isHoldingSpeechButton = false
+    @State private var showSpeechCard = false
+    @State private var lastSpokenQuestion: String? = nil
+    @State private var pendingVoiceSnapshot: Data? = nil
+    @State private var pendingVoiceReference: AnalyzedSceneReference? = nil
+    
+    // Diagnostic Telemetry (Developer View)
+    @State private var lastGeminiLatencyMs: Double = 0.0
+    @State private var lastPerceivedTurnaroundMs: Double = 0.0
+    @State private var lastAnalyzedPayloadBytes: Int = 0
+    @State private var lastMultimodalStatus: MultimodalService.ResponseStatus = .idle
+    @State private var lastDivergenceScore: Float = 0.0
     
     // Displayed Interpretation State (Single Source of Truth)
     @State private var displayedInterpretation: InterpretationResult = .initial
     
+    // Interaction State
+    @State private var interactionState: InteractionState = .idle
+    
     // UI Sheets & Configuration
-    @State private var showAPIKeySheet = false
-    @State private var apiKeyInput = MultimodalConfig.apiKey
+    @State private var showSettingsSheet = false
     @State private var showRawTelemetry = false
     
-    @Environment(\.dismiss) private var dismiss
+    // Microphone permission tracking for fallback
+    @State private var microphoneAvailable: Bool = true
     
     var body: some View {
         ZStack {
@@ -80,25 +98,7 @@ struct CameraView: View {
             
             switch cameraManager.status {
             case .ready:
-                CameraPreviewRepresentable(session: cameraManager.captureSession)
-                    .ignoresSafeArea()
-                    .accessibilityLabel("Live camera viewfinder")
-                    .accessibilityHint("Point camera at objects or banknotes to capture visual input.")
-                
-                // Bottom Interpretation and Status Overlay (Zero Manual Buttons)
-                VStack(spacing: 8) {
-                    Spacer()
-                    
-                    // Subtle Status Indicator (Only during stabilizing / analyzing / scene change)
-                    if operationalState == .stabilizing || operationalState == .analyzing || operationalState == .possibleSceneChange || operationalState == .sceneChangeConfirmed {
-                        stateStatusIndicator
-                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                    }
-                    
-                    // Primary Semantic Interpretation Decision Card (Prominently Displays Full Multimodal Analysis)
-                    interpretationCard(interpretation: displayedInterpretation)
-                }
-                .ignoresSafeArea(edges: .bottom)
+                cameraReadyView
                 
             case .unauthorized:
                 unauthorizedView
@@ -110,54 +110,8 @@ struct CameraView: View {
                 errorView(message: message)
                 
             case .unconfigured:
-                ProgressView("Connecting Camera...")
+                ProgressView("Starting camera…")
                     .foregroundStyle(.white)
-            }
-            
-            // Top Controls Overlay
-            VStack {
-                HStack {
-                    Button {
-                        cameraManager.stopSession()
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 32))
-                            .foregroundStyle(.white.opacity(0.85))
-                            .padding(16)
-                    }
-                    .accessibilityLabel("Close camera")
-                    .accessibilityHint("Returns to the home screen")
-                    
-                    Spacer()
-                    
-                    // Toggle Raw Telemetry Details
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            showRawTelemetry.toggle()
-                        }
-                    } label: {
-                        Image(systemName: showRawTelemetry ? "info.circle.fill" : "info.circle")
-                            .font(.system(size: 22))
-                            .foregroundStyle(.white.opacity(0.85))
-                            .padding(16)
-                    }
-                    .accessibilityLabel("Toggle raw technical telemetry")
-                    
-                    // Local API Key Configuration Trigger
-                    Button {
-                        apiKeyInput = MultimodalConfig.apiKey
-                        showAPIKeySheet = true
-                    } label: {
-                        Image(systemName: MultimodalConfig.hasConfiguredKey ? "key.fill" : "key.slash.fill")
-                            .font(.system(size: 20))
-                            .foregroundStyle(.white.opacity(0.85))
-                            .padding(16)
-                    }
-                    .accessibilityLabel(MultimodalConfig.hasConfiguredKey ? "Configure API Key" : "Set API Key (Required for Multimodal)")
-                    .accessibilityHint("Opens sheet to configure local API key")
-                }
-                Spacer()
             }
         }
         .onAppear {
@@ -165,280 +119,691 @@ struct CameraView: View {
         }
         .onDisappear {
             cameraManager.stopSession()
-            resetAutomaticCycle()
+            speechService.cancelRecording()
+            resetSessionState()
         }
-        .sheet(isPresented: $showAPIKeySheet) {
-            apiKeyConfigurationView
+        .sheet(isPresented: $showSettingsSheet) {
+            SettingsView(
+                selectedLocale: $speechService.selectedLocale,
+                showDeveloperDiagnostics: $showRawTelemetry
+            )
+            .presentationDetents([.medium, .large])
         }
         .onChange(of: cameraManager.latestResult) { _, newResult in
             handleIncomingVisionFrame(newResult)
         }
     }
     
-    // MARK: - Multi-Signal Scene Change & Automatic Engine
+    // MARK: - Camera Ready View (Primary Experience)
+    
+    private var cameraReadyView: some View {
+        ZStack {
+            // Full-screen camera preview
+            CameraPreviewRepresentable(session: cameraManager.captureSession)
+                .ignoresSafeArea()
+                .accessibilityLabel("Live camera viewfinder")
+                .accessibilityHint("Point camera at objects to see them. Use the voice area below to ask questions.")
+            
+            // Content overlay
+            VStack(spacing: 0) {
+                
+                // Top Bar: Settings only
+                topBar
+                
+                Spacer()
+                
+                // Speech feedback (shown during/after voice interaction)
+                if showSpeechCard {
+                    speechFeedbackCard
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .padding(.bottom, 8)
+                }
+                
+                // Interpretation/Result Card
+                interpretationCard(interpretation: displayedInterpretation)
+                    .padding(.bottom, 10)
+                
+                // Primary interaction: Large voice area or Analyze fallback
+                bottomInteractionArea
+                    .padding(.bottom, 8)
+            }
+        }
+    }
+    
+    // MARK: - Top Bar (Settings Only)
+    
+    private var topBar: some View {
+        HStack {
+            Button {
+                showSettingsSheet = true
+            } label: {
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: 22))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .padding(14)
+                    .background(Circle().fill(Color.black.opacity(0.3)))
+            }
+            .accessibilityLabel("Settings")
+            .accessibilityHint("Opens settings for language, API key, and diagnostics.")
+            
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+    }
+    
+    // MARK: - Continuous On-Device Vision Engine & Scene Invalidation
     
     private func handleIncomingVisionFrame(_ recognition: RecognitionResult) {
         let now = Date()
         let hasVisuals = recognition.hasObservations
         
-        // 1. Empty Scene Invalidation: Camera moved into empty space for > 0.6s
+        // 1. Empty Scene Invalidation: Camera pointed away into empty space for > 0.6s
         if !hasVisuals {
             if now.timeIntervalSince(lastVisualObservationTime) > 0.6 {
-                if operationalState != .observing {
-                    print("[SCENE] Scene cleared / camera moved into empty space. Resetting to OBSERVING.")
-                    resetAutomaticCycle()
+                if hasActiveMultimodalResult {
+                    print("[SCENE] Scene cleared. Reverting to continuous local Vision.")
+                    hasActiveMultimodalResult = false
+                    lastAnalyzedScene = nil
                 }
+                displayedInterpretation = .initial
             }
             return
         }
         
         lastVisualObservationTime = now
         
-        // 2. State: RESULT_LOCKED — Evaluate Multi-Signal Scene Divergence
-        if operationalState == .resultLocked, let reference = lastAnalyzedScene {
+        // 2. If a Multimodal Result is currently displayed, check for physical scene change
+        if hasActiveMultimodalResult, let reference = lastAnalyzedScene {
             let (divergence, reason) = interpretationService.computeSceneDivergence(current: recognition, reference: reference)
+            lastDivergenceScore = divergence
             
             if divergence >= divergenceThreshold {
                 if sceneDivergenceStartTime == nil {
                     sceneDivergenceStartTime = now
-                    print("[SCENE] Possible scene change detected. Reason: \(reason ?? "visual divergence"). Starting \(sceneChangeConfirmationSeconds)s confirmation.")
+                    print("[SCENE] Scene change in progress (\(reason ?? "divergence")). Starting confirmation...")
                 }
                 
                 let divergenceDuration = now.timeIntervalSince(sceneDivergenceStartTime ?? now)
                 
                 if divergenceDuration >= sceneChangeConfirmationSeconds {
-                    print("[SCENE] Scene change CONFIRMED after \(String(format: "%.2f", divergenceDuration))s. Clearing previous result and stabilizing new scene.")
+                    print("[SCENE] Scene change confirmed. Clearing multimodal result and showing live local Vision.")
                     withAnimation(.easeInOut(duration: 0.2)) {
-                        operationalState = .sceneChangeConfirmed
+                        hasActiveMultimodalResult = false
                         lastAnalyzedScene = nil
                         sceneDivergenceStartTime = nil
-                        observationStartTime = now
                         displayedInterpretation = interpretationService.interpret(recognition: recognition)
-                    }
-                    return
-                } else {
-                    if operationalState != .possibleSceneChange {
-                        operationalState = .possibleSceneChange
+                        // Clear speech card when scene changes
+                        showSpeechCard = false
+                        lastSpokenQuestion = nil
                     }
                     return
                 }
             } else {
-                // Divergence dropped back below threshold (user returned to same object / minor camera tremor)
+                // Returned to analyzed object
                 if sceneDivergenceStartTime != nil {
                     sceneDivergenceStartTime = nil
-                    if operationalState != .resultLocked {
-                        operationalState = .resultLocked
-                    }
-                }
-                return // Result remains locked on screen; continuous Vision frames do NOT overwrite card
-            }
-        }
-        
-        // 3. State: OBSERVING / STABILIZING / SCENE_CHANGE_CONFIRMED — Accumulate Dwell Stability
-        if observationStartTime == nil {
-            observationStartTime = now
-        }
-        
-        let dwellDuration = now.timeIntervalSince(observationStartTime ?? now)
-        
-        // 4. State: Stabilizing (accumulating towards 0.70s dwell)
-        if dwellDuration < dwellRequirementSeconds {
-            if operationalState == .observing || operationalState == .sceneChangeConfirmed {
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    operationalState = .stabilizing
                 }
             }
-            // Display fast continuous on-device interpretation while stabilizing
-            if operationalState == .stabilizing {
-                displayedInterpretation = interpretationService.interpret(recognition: recognition)
-            }
-            return
+            return // Multimodal result takes precedence until user points at a new object
         }
         
-        // 5. State: Stabilizing -> Analyzing (Dwell Threshold Reached)
+        // 3. Continuous Local Vision + OCR Interpretation (Never triggers cloud API)
+        displayedInterpretation = interpretationService.interpret(recognition: recognition)
+    }
+    
+    // MARK: - User-Initiated Manual Analysis Fallback (Microphone Denied)
+    
+    private func triggerManualAnalysis() {
         guard !isRequestInFlight else { return }
-        guard now.timeIntervalSince(lastRequestTimestamp) >= autoRequestCooldown else { return }
         
         guard MultimodalConfig.hasConfiguredKey else {
-            print("[SCENE] API key not configured. Multimodal request suppressed.")
-            displayedInterpretation = interpretationService.interpret(recognition: recognition)
+            showSettingsSheet = true
             return
         }
         
-        print("[SCENE] Stability threshold reached (dwell: \(String(format: "%.2f", dwellDuration))s). Capturing frame.")
+        print("[USER] Analyze button tapped. Capturing frame for generic Gemini reasoning...")
         
         guard let jpegData = cameraManager.captureCurrentFrameJPEG() else {
-            print("[SCENE] Frame capture failed.")
+            print("[USER] Frame capture failed.")
             return
         }
         
-        print("[SCENE] Frame captured (\(jpegData.count) bytes). Sending Gemini request...")
-        
         isRequestInFlight = true
-        lastRequestTimestamp = now
-        
-        withAnimation(.easeInOut(duration: 0.2)) {
-            operationalState = .analyzing
-        }
+        interactionState = .thinking
+        lastTriggerType = "Manual"
+        lastRequestTimestamp = Date()
+        let requestStartTime = Date()
         
         // Snapshot the reference scene at the moment of capture
         let snapshotReference = AnalyzedSceneReference(
-            dominantClassification: recognition.topClassification?.identifier,
-            ocrTextFingerprint: recognition.combinedText,
-            featurePrint: recognition.featurePrint,
-            analyzedAt: now
+            dominantClassification: cameraManager.latestResult.topClassification?.identifier,
+            ocrTextFingerprint: cameraManager.latestResult.combinedText,
+            featurePrint: cameraManager.latestResult.featurePrint,
+            analyzedAt: requestStartTime
         )
+        
+        UIAccessibility.post(notification: .announcement, argument: "Analyzing image")
         
         Task {
             let result = await multimodalService.analyzeImage(
                 jpegData: jpegData,
+                prompt: MultimodalService.defaultPrompt,
                 apiKey: MultimodalConfig.apiKey
             )
             
             await MainActor.run {
                 self.isRequestInFlight = false
+                self.lastMultimodalStatus = result.status
+                self.lastGeminiLatencyMs = result.latencyMs
+                self.lastPerceivedTurnaroundMs = Date().timeIntervalSince(requestStartTime) * 1000.0
+                self.lastAnalyzedPayloadBytes = jpegData.count
                 
                 if result.status == .success && !result.text.isEmpty {
-                    print("[SCENE] Gemini SUCCESS - Response length: \(result.text.count)")
+                    print("[USER] Gemini SUCCESS (\(Int(result.latencyMs))ms) - Response length: \(result.text.count)")
                     
                     let synthesized = self.interpretationService.interpret(
                         recognition: self.cameraManager.latestResult,
                         multimodal: result
                     )
                     
-                    print("[SCENE] Result LOCKED: '\(synthesized.primaryHeadline)' with full plain-text description (\(synthesized.detailedDescription?.count ?? 0) chars)")
-                    
                     withAnimation(.easeInOut(duration: 0.25)) {
                         self.displayedInterpretation = synthesized
                         self.lastAnalyzedScene = snapshotReference
-                        self.operationalState = .resultLocked
+                        self.hasActiveMultimodalResult = true
+                        self.interactionState = .answered
                     }
+                    
+                    UIAccessibility.post(notification: .announcement, argument: "\(synthesized.primaryHeadline). \(synthesized.detailedDescription ?? "")")
                 } else {
-                    print("[SCENE] Multimodal request failed (\(result.status)). Falling back to local evidence.")
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        self.operationalState = .observing
-                    }
+                    handleGeminiFailure(result: result, sceneRef: snapshotReference)
                 }
             }
         }
     }
     
-    // MARK: - State Reset Helper
+    // MARK: - End-to-End Voice Query Action
     
-    private func resetAutomaticCycle() {
-        observationStartTime = nil
-        sceneDivergenceStartTime = nil
-        lastAnalyzedScene = nil
-        isRequestInFlight = false
-        operationalState = .observing
-        displayedInterpretation = .initial
-        interpretationService.resetStability()
-    }
-    
-    // MARK: - Non-Interactive Subtle State Status Bar
-    
-    private var stateStatusIndicator: some View {
-        HStack(spacing: 6) {
-            switch operationalState {
-            case .stabilizing:
-                Circle()
-                    .fill(Color.yellow)
-                    .frame(width: 7, height: 7)
-                Text("Holding steady...")
-                    .font(.caption2)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.yellow)
-                
-            case .analyzing:
-                ProgressView()
-                    .scaleEffect(0.65)
-                    .tint(.white)
-                Text("Analyzing...")
-                    .font(.caption2)
-                    .fontWeight(.bold)
-                    .foregroundStyle(.white)
-                
-            case .possibleSceneChange, .sceneChangeConfirmed:
-                Circle()
-                    .fill(Color.blue)
-                    .frame(width: 7, height: 7)
-                Text("New object detected...")
-                    .font(.caption2)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.blue)
-                
-            case .observing, .resultLocked:
-                EmptyView()
+    private func startSpeechInput() {
+        guard !isRequestInFlight else { return }
+        
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        
+        // Synchronously snapshot current camera frame
+        if let jpegData = cameraManager.captureCurrentFrameJPEG() {
+            self.pendingVoiceSnapshot = jpegData
+            self.pendingVoiceReference = AnalyzedSceneReference(
+                dominantClassification: cameraManager.latestResult.topClassification?.identifier,
+                ocrTextFingerprint: cameraManager.latestResult.combinedText,
+                featurePrint: cameraManager.latestResult.featurePrint,
+                analyzedAt: Date()
+            )
+            print("[VOICE] Captured frame snapshot (\(jpegData.count) bytes).")
+        } else {
+            print("[VOICE] Warning: Frame snapshot capture failed.")
+        }
+        
+        withAnimation(.easeInOut(duration: 0.15)) {
+            showSpeechCard = true
+            interactionState = .listening
+        }
+        
+        UIAccessibility.post(notification: .announcement, argument: "Listening")
+        
+        Task {
+            let granted = await speechService.requestPermissions()
+            if granted {
+                speechService.startRecording()
+            } else {
+                await MainActor.run {
+                    self.microphoneAvailable = false
+                    self.interactionState = .idle
+                }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 5)
-        .background(
-            Capsule()
-                .fill(Color.black.opacity(0.65))
+    }
+    
+    private func stopSpeechInput() {
+        guard isHoldingSpeechButton == false else { return }
+        
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        
+        Task {
+            // Await on-device speech transcription finalization (< 250ms)
+            guard let question = await speechService.stopRecordingAndGetTranscript() else {
+                print("[VOICE] Speech input empty or cancelled. Zero Gemini calls made.")
+                await MainActor.run {
+                    self.pendingVoiceSnapshot = nil
+                    self.pendingVoiceReference = nil
+                    self.interactionState = .idle
+                }
+                return
+            }
+            
+            // Check API Key
+            guard MultimodalConfig.hasConfiguredKey else {
+                await MainActor.run {
+                    showSettingsSheet = true
+                    self.pendingVoiceSnapshot = nil
+                    self.pendingVoiceReference = nil
+                    self.interactionState = .idle
+                }
+                return
+            }
+            
+            // Obtain captured snapshot (or fallback to live frame)
+            guard let jpegData = self.pendingVoiceSnapshot ?? self.cameraManager.captureCurrentFrameJPEG() else {
+                print("[VOICE] Frame data missing for query.")
+                await MainActor.run { self.interactionState = .idle }
+                return
+            }
+            
+            let sceneRef = self.pendingVoiceReference ?? AnalyzedSceneReference(
+                dominantClassification: self.cameraManager.latestResult.topClassification?.identifier,
+                ocrTextFingerprint: self.cameraManager.latestResult.combinedText,
+                featurePrint: self.cameraManager.latestResult.featurePrint,
+                analyzedAt: Date()
+            )
+            
+            await MainActor.run {
+                self.lastSpokenQuestion = question
+                self.isRequestInFlight = true
+                self.isProcessingVoiceQuery = true
+                self.lastTriggerType = "Voice"
+                self.lastRequestTimestamp = Date()
+                self.interactionState = .thinking
+                
+                UIAccessibility.post(notification: .announcement, argument: "Thinking")
+            }
+            
+            let requestStartTime = Date()
+            let prompt = MultimodalService.buildVoiceQuestionPrompt(userQuestion: question)
+            
+            print("[VOICE] Sending Gemini voice query for: \"\(question)\" (\(jpegData.count) bytes)...")
+            
+            let result = await multimodalService.analyzeImage(
+                jpegData: jpegData,
+                prompt: prompt,
+                apiKey: MultimodalConfig.apiKey
+            )
+            
+            await MainActor.run {
+                self.isRequestInFlight = false
+                self.isProcessingVoiceQuery = false
+                self.pendingVoiceSnapshot = nil
+                self.pendingVoiceReference = nil
+                
+                self.lastMultimodalStatus = result.status
+                self.lastGeminiLatencyMs = result.latencyMs
+                self.lastPerceivedTurnaroundMs = Date().timeIntervalSince(requestStartTime) * 1000.0
+                self.lastAnalyzedPayloadBytes = jpegData.count
+                
+                if result.status == .success && !result.text.isEmpty {
+                    print("[VOICE] Gemini SUCCESS (\(Int(result.latencyMs))ms) - Response length: \(result.text.count)")
+                    
+                    let synthesized = self.interpretationService.interpret(
+                        recognition: self.cameraManager.latestResult,
+                        multimodal: result
+                    )
+                    
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        self.displayedInterpretation = synthesized
+                        self.lastAnalyzedScene = sceneRef
+                        self.hasActiveMultimodalResult = true
+                        self.interactionState = .answered
+                    }
+                    
+                    UIAccessibility.post(notification: .announcement, argument: "\(synthesized.primaryHeadline). \(synthesized.detailedDescription ?? "")")
+                } else {
+                    handleGeminiFailure(result: result, sceneRef: sceneRef)
+                }
+            }
+        }
+    }
+    
+    // MARK: - Gemini Failure Handler (Shared)
+    
+    private func handleGeminiFailure(result: MultimodalService.MultimodalResult, sceneRef: AnalyzedSceneReference) {
+        let failureReason = result.status.displayTelemetryTitle
+        print("[AI] Request failed (\(failureReason)). Showing clean local fallback.")
+        
+        var localFallback = self.interpretationService.interpret(
+            recognition: self.cameraManager.latestResult
+        )
+        
+        let userMessage: String
+        if result.status.isRateLimited {
+            userMessage = "The service is temporarily busy. Please try again in a moment."
+        } else if case .networkError = result.status {
+            userMessage = "Could not connect. Check your internet connection and try again."
+        } else if case .authenticationError = result.status {
+            userMessage = "API key issue. Check your key in Settings."
+        } else {
+            userMessage = "Something went wrong. Please try again."
+        }
+        
+        localFallback = InterpretationResult(
+            primaryHeadline: localFallback.primaryHeadline,
+            detailedDescription: localFallback.detailedDescription,
+            confidence: localFallback.confidence,
+            cautionaryNote: userMessage,
+            contributingSources: localFallback.contributingSources,
+            isSpecificIdentification: localFallback.isSpecificIdentification,
+            timestamp: Date()
+        )
+        
+        withAnimation(.easeInOut(duration: 0.25)) {
+            self.displayedInterpretation = localFallback
+            self.lastAnalyzedScene = sceneRef
+            self.hasActiveMultimodalResult = false
+            self.interactionState = .error(userMessage)
+        }
+        
+        // Reset to idle after brief error display
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+            if case .error = self.interactionState {
+                self.interactionState = .idle
+            }
+        }
+    }
+    
+    // MARK: - Bottom Interaction Area
+    
+    private var bottomInteractionArea: some View {
+        Group {
+            if microphoneAvailable {
+                voiceInteractionArea
+            } else {
+                analyzeFallbackButton
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+    
+    // MARK: - Large Voice Interaction Area (~120pt, full width)
+    
+    private var voiceInteractionArea: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 20)
+                .fill(voiceAreaBackgroundColor)
                 .overlay(
-                    Capsule()
+                    RoundedRectangle(cornerRadius: 20)
+                        .stroke(voiceAreaBorderColor, lineWidth: 1.5)
+                )
+            
+            VStack(spacing: 8) {
+                // State-dependent icon
+                Group {
+                    switch interactionState {
+                    case .listening:
+                        Image(systemName: "waveform")
+                            .font(.system(size: 28, weight: .medium))
+                            .foregroundStyle(.white)
+                            .symbolEffect(.variableColor.iterative, isActive: true)
+                    case .thinking:
+                        ProgressView()
+                            .scaleEffect(1.2)
+                            .tint(.white)
+                    default:
+                        Image(systemName: "mic.fill")
+                            .font(.system(size: 28, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.9))
+                    }
+                }
+                .frame(height: 32)
+                
+                // State-dependent label
+                Text(voiceAreaLabel)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.white.opacity(0.9))
+                
+                // Hint text (idle only)
+                if case .idle = interactionState {
+                    Text("\"What is this?\"")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.5))
+                        .italic()
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 120)
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    if !isHoldingSpeechButton && !isRequestInFlight {
+                        isHoldingSpeechButton = true
+                        startSpeechInput()
+                    }
+                }
+                .onEnded { _ in
+                    if isHoldingSpeechButton {
+                        isHoldingSpeechButton = false
+                        stopSpeechInput()
+                    }
+                }
+        )
+        .disabled(isRequestInFlight && !isHoldingSpeechButton)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(voiceAreaAccessibilityLabel)
+        .accessibilityHint("Press and hold while speaking, then release to get an answer.")
+        .accessibilityAddTraits(.isButton)
+    }
+    
+    private var voiceAreaBackgroundColor: Color {
+        switch interactionState {
+        case .listening:
+            return Color.red.opacity(0.75)
+        case .thinking:
+            return Color.blue.opacity(0.6)
+        case .error:
+            return Color.orange.opacity(0.5)
+        default:
+            return Color.black.opacity(0.65)
+        }
+    }
+    
+    private var voiceAreaBorderColor: Color {
+        switch interactionState {
+        case .listening:
+            return Color.red.opacity(0.9)
+        case .thinking:
+            return Color.blue.opacity(0.7)
+        case .error:
+            return Color.orange.opacity(0.7)
+        default:
+            return Color.white.opacity(0.2)
+        }
+    }
+    
+    private var voiceAreaLabel: String {
+        switch interactionState {
+        case .idle, .answered:
+            return "Hold and ask a question"
+        case .listening:
+            return "Listening…"
+        case .thinking:
+            return "Thinking…"
+        case .error:
+            return "Try again"
+        }
+    }
+    
+    private var voiceAreaAccessibilityLabel: String {
+        switch interactionState {
+        case .listening:
+            return "Listening to your question"
+        case .thinking:
+            return "Thinking about your question"
+        case .error(let msg):
+            return msg
+        default:
+            return "Hold to ask a question about what the camera sees"
+        }
+    }
+    
+    // MARK: - Analyze Fallback Button (Microphone Denied)
+    
+    private var analyzeFallbackButton: some View {
+        Button {
+            triggerManualAnalysis()
+        } label: {
+            HStack(spacing: 8) {
+                if isRequestInFlight {
+                    ProgressView()
+                        .scaleEffect(0.9)
+                        .tint(.white)
+                    Text("Analyzing…")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                } else {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 20, weight: .semibold))
+                    Text("Analyze")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                }
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .frame(height: 64)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(isRequestInFlight ? Color.gray.opacity(0.5) : Color.blue)
+            )
+        }
+        .disabled(isRequestInFlight)
+        .accessibilityLabel(isRequestInFlight ? "Analyzing image" : "Analyze what the camera sees")
+        .accessibilityHint("Takes a photo and uses AI to identify and describe what is visible.")
+    }
+    
+    // MARK: - Speech Feedback Card
+    
+    private var speechFeedbackCard: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(speechStatusDotColor)
+                .frame(width: 8, height: 8)
+            
+            Text(speechCardText)
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundStyle(.white)
+                .lineLimit(2)
+            
+            Spacer()
+            
+            // Dismiss button (only when not actively listening/processing)
+            if !speechService.status.isListening && !isProcessingVoiceQuery {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        showSpeechCard = false
+                        lastSpokenQuestion = nil
+                        speechService.finalTranscript = ""
+                    }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.caption2)
+                        .foregroundStyle(.white.opacity(0.6))
+                        .padding(6)
+                }
+                .accessibilityLabel("Dismiss question")
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.black.opacity(0.6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
                         .stroke(Color.white.opacity(0.15), lineWidth: 1)
                 )
         )
         .padding(.horizontal, 16)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(statusAccessibilityText)
+        .accessibilityLabel("Your question: \(speechCardText)")
     }
     
-    private var statusAccessibilityText: String {
-        switch operationalState {
-        case .observing: return "Observing scene"
-        case .stabilizing: return "Holding steady"
-        case .analyzing: return "Analyzing"
-        case .resultLocked: return "Analysis result locked"
-        case .possibleSceneChange: return "Evaluating potential scene change"
-        case .sceneChangeConfirmed: return "New object detected"
+    private var speechStatusDotColor: Color {
+        if speechService.status.isListening {
+            return .red
+        } else if isProcessingVoiceQuery {
+            return .blue
+        } else {
+            return .green
         }
     }
     
-    // MARK: - Interpretation Decision Card (T005)
+    private var speechCardText: String {
+        if speechService.status.isListening {
+            return speechService.partialTranscript.isEmpty ? "Listening…" : "\"\(speechService.partialTranscript)\""
+        } else if isProcessingVoiceQuery, let q = lastSpokenQuestion {
+            return "\"\(q)\""
+        } else if let q = lastSpokenQuestion {
+            return "You asked: \"\(q)\""
+        } else if !speechService.finalTranscript.isEmpty {
+            return "\"\(speechService.finalTranscript)\""
+        } else if case .unauthorized(let msg) = speechService.status {
+            return msg
+        } else if case .unavailable(let msg) = speechService.status {
+            return msg
+        } else if case .failed(let msg) = speechService.status {
+            return msg
+        } else {
+            return "Hold to ask a question."
+        }
+    }
+    
+    // MARK: - State Reset Helper
+    
+    private func resetSessionState() {
+        sceneDivergenceStartTime = nil
+        lastAnalyzedScene = nil
+        hasActiveMultimodalResult = false
+        isRequestInFlight = false
+        isProcessingVoiceQuery = false
+        pendingVoiceSnapshot = nil
+        pendingVoiceReference = nil
+        displayedInterpretation = .initial
+        interactionState = .idle
+        interpretationService.resetStability()
+    }
+    
+    // MARK: - Simplified Interpretation Card
     
     private func interpretationCard(interpretation: InterpretationResult) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             
-            // Header: Status Badge & Contributing Evidence Sources
-            HStack {
-                confidenceBadge(interpretation.confidence)
+            // Confidence dot + Headline
+            HStack(alignment: .top, spacing: 8) {
+                // Simple colored dot for confidence (no text label)
+                Circle()
+                    .fill(confidenceColor(interpretation.confidence))
+                    .frame(width: 10, height: 10)
+                    .padding(.top, 5)
+                    .accessibilityLabel(confidenceAccessibilityLabel(interpretation.confidence))
                 
-                Spacer()
-                
-                HStack(spacing: 4) {
-                    ForEach(interpretation.contributingSources) { source in
-                        Text(source.rawValue)
-                            .font(.system(size: 10, weight: .bold))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(sourceBadgeColor(source))
-                            .foregroundStyle(.white.opacity(0.95))
-                            .clipShape(Capsule())
-                    }
-                }
+                // Primary Headline
+                Text(interpretation.primaryHeadline)
+                    .font(.title3)
+                    .fontWeight(.bold)
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .accessibilityAddTraits(.isHeader)
             }
             
-            // 1. Primary Semantic Headline (Concise, Prominent Title)
-            Text(interpretation.primaryHeadline)
-                .font(.title3)
-                .fontWeight(.bold)
-                .foregroundStyle(.white)
-                .lineLimit(2)
-                .accessibilityAddTraits(.isHeader)
-            
-            // 2. Detailed Multimodal Analysis (Clean Plain-Text Explanation)
+            // Description
             if let description = interpretation.detailedDescription {
                 Text(description)
                     .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.92))
+                    .foregroundStyle(.white.opacity(0.88))
                     .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
             }
             
-            // Cautionary Note (if uncertainty or conflict exists)
+            // Cautionary Note (human-readable error/uncertainty)
             if let caution = interpretation.cautionaryNote {
                 HStack(alignment: .top, spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
@@ -450,11 +815,11 @@ struct CameraView: View {
                 }
                 .padding(8)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.yellow.opacity(0.15))
+                .background(Color.yellow.opacity(0.12))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             }
             
-            // Expandable Raw Telemetry (T003 Developer View)
+            // Developer Telemetry (hidden by default, toggled from Settings)
             if showRawTelemetry {
                 Divider()
                     .background(Color.white.opacity(0.2))
@@ -466,58 +831,18 @@ struct CameraView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 16)
-                .fill(Color.black.opacity(0.88))
+                .fill(Color.black.opacity(0.85))
                 .overlay(
                     RoundedRectangle(cornerRadius: 16)
-                        .stroke(confidenceBorderColor(interpretation.confidence), lineWidth: 1.5)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
                 )
         )
         .padding(.horizontal, 16)
-        .padding(.bottom, 24)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Interpretation: \(interpretation.primaryHeadline). \(interpretation.detailedDescription ?? ""). Confidence: \(interpretation.confidence.rawValue). \(interpretation.cautionaryNote ?? "")")
+        .accessibilityLabel(interpretationAccessibilityLabel(interpretation))
     }
     
-    // MARK: - Source Badge Color Helper
-    
-    private func sourceBadgeColor(_ source: EvidenceSource) -> Color {
-        switch source {
-        case .multimodal:
-            return Color.blue.opacity(0.4)
-        case .onDeviceVision:
-            return Color.white.opacity(0.15)
-        case .onDeviceOCR:
-            return Color.yellow.opacity(0.25)
-        }
-    }
-    
-    // MARK: - Confidence Badge Helper
-    
-    private func confidenceBadge(_ confidence: EvidenceConfidence) -> some View {
-        HStack(spacing: 4) {
-            Circle()
-                .fill(confidenceColor(confidence))
-                .frame(width: 8, height: 8)
-            Text(confidenceTitle(confidence))
-                .font(.caption2)
-                .fontWeight(.bold)
-                .foregroundStyle(confidenceColor(confidence))
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(confidenceColor(confidence).opacity(0.15))
-        .clipShape(Capsule())
-    }
-    
-    private func confidenceTitle(_ confidence: EvidenceConfidence) -> String {
-        switch confidence {
-        case .strong: return "Strong Evidence"
-        case .moderate: return "Moderate Evidence"
-        case .weak: return "Weak Evidence"
-        case .conflicting: return "Conflicting Evidence"
-        case .insufficient: return "Insufficient Input"
-        }
-    }
+    // MARK: - Confidence Helpers (Simplified)
     
     private func confidenceColor(_ confidence: EvidenceConfidence) -> Color {
         switch confidence {
@@ -525,39 +850,128 @@ struct CameraView: View {
         case .moderate: return .blue
         case .weak: return .orange
         case .conflicting: return .red
-        case .insufficient: return .secondary
+        case .insufficient: return .gray
         }
     }
     
-    private func confidenceBorderColor(_ confidence: EvidenceConfidence) -> Color {
+    private func confidenceAccessibilityLabel(_ confidence: EvidenceConfidence) -> String {
         switch confidence {
-        case .strong: return .green.opacity(0.5)
-        case .moderate: return .blue.opacity(0.4)
-        case .weak: return .orange.opacity(0.4)
-        case .conflicting: return .red.opacity(0.6)
-        case .insufficient: return .white.opacity(0.15)
+        case .strong: return "High confidence"
+        case .moderate: return "Moderate confidence"
+        case .weak: return "Low confidence"
+        case .conflicting: return "Conflicting information"
+        case .insufficient: return ""
         }
     }
     
-    // MARK: - Raw Telemetry Sub-section (T003)
+    private func interpretationAccessibilityLabel(_ interpretation: InterpretationResult) -> String {
+        var label = interpretation.primaryHeadline
+        if let desc = interpretation.detailedDescription {
+            label += ". \(desc)"
+        }
+        let conf = confidenceAccessibilityLabel(interpretation.confidence)
+        if !conf.isEmpty {
+            label += ". \(conf)."
+        }
+        if let caution = interpretation.cautionaryNote {
+            label += " \(caution)"
+        }
+        return label
+    }
+    
+    // MARK: - Raw Telemetry Sub-section (Developer View)
     
     private func rawTelemetrySection(result: RecognitionResult) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("Raw Telemetry:")
+                Text("Technical Diagnostics:")
                     .font(.caption2)
                     .fontWeight(.bold)
                     .foregroundStyle(.secondary)
                 Spacer()
-                if result.processingTimeMs > 0 {
-                    Text("\(Int(result.processingTimeMs))ms")
+                Text("Trigger: \(lastTriggerType)")
+                    .font(.caption2)
+                    .fontWeight(.bold)
+                    .foregroundStyle(lastTriggerType == "Voice" ? .purple : .blue)
+            }
+            
+            if let q = lastSpokenQuestion {
+                HStack {
+                    Text("Spoken Question:")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
+                    Text("\"\(q)\"")
+                        .font(.caption2)
+                        .foregroundStyle(.purple)
+                        .lineLimit(1)
                 }
             }
             
             HStack {
-                Text("Vision:")
+                Text("Speech State:")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(speechStatusTelemetryTitle)
+                    .font(.caption2)
+                    .foregroundStyle(speechService.status.isListening ? .red : .white)
+                
+                Spacer()
+                
+                Text("Speech Duration:")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(speechService.lastRecordingDuration > 0 ? "\(String(format: "%.1f", speechService.lastRecordingDuration))s" : "N/A")
+                    .font(.caption2)
+                    .foregroundStyle(.white)
+            }
+            
+            HStack {
+                Text("Vision Latency:")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(result.processingTimeMs > 0 ? "\(Int(result.processingTimeMs))ms" : "N/A")
+                    .font(.caption2)
+                    .foregroundStyle(.white)
+                
+                Spacer()
+                
+                Text("Gemini Latency:")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(lastGeminiLatencyMs > 0 ? "\(Int(lastGeminiLatencyMs))ms" : "N/A")
+                    .font(.caption2)
+                    .foregroundStyle(.white)
+            }
+            
+            HStack {
+                Text("Total Turnaround:")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(lastPerceivedTurnaroundMs > 0 ? "\(Int(lastPerceivedTurnaroundMs))ms" : "N/A")
+                    .font(.caption2)
+                    .foregroundStyle(.white)
+                
+                Spacer()
+                
+                Text("Snapshot Size:")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(lastAnalyzedPayloadBytes > 0 ? "\(lastAnalyzedPayloadBytes / 1024) KB" : "N/A")
+                    .font(.caption2)
+                    .foregroundStyle(.white)
+            }
+            
+            HStack {
+                Text("Multimodal Status:")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(lastMultimodalStatus.displayTelemetryTitle)
+                    .font(.caption2)
+                    .foregroundStyle(lastMultimodalStatus.isRateLimited ? .orange : .white)
+            }
+            
+            HStack {
+                Text("Vision Category:")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Text(result.topClassification?.identifier ?? "None")
@@ -566,7 +980,7 @@ struct CameraView: View {
             }
             
             HStack {
-                Text("OCR:")
+                Text("OCR Text:")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Text(result.recognizedTexts.isEmpty ? "None" : result.combinedText)
@@ -574,49 +988,62 @@ struct CameraView: View {
                     .foregroundStyle(.yellow)
                     .lineLimit(1)
             }
+            
+            HStack {
+                Text("Divergence:")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(String(format: "%.2f", lastDivergenceScore))
+                    .font(.caption2)
+                    .foregroundStyle(.white)
+                
+                Spacer()
+                
+                Text("Sources:")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    ForEach(displayedInterpretation.contributingSources) { source in
+                        Text(source.rawValue)
+                            .font(.system(size: 9, weight: .bold))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Color.white.opacity(0.15))
+                            .foregroundStyle(.white.opacity(0.9))
+                            .clipShape(Capsule())
+                    }
+                }
+            }
+            
+            HStack {
+                Text("Confidence:")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(displayedInterpretation.confidence.rawValue)
+                    .font(.caption2)
+                    .foregroundStyle(.white)
+                
+                Spacer()
+                
+                Text("Mic Available:")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(microphoneAvailable ? "Yes" : "No (Fallback)")
+                    .font(.caption2)
+                    .foregroundStyle(microphoneAvailable ? .green : .orange)
+            }
         }
     }
     
-    // MARK: - Local API Key Configuration Sheet
-    
-    private var apiKeyConfigurationView: some View {
-        NavigationStack {
-            Form {
-                Section(header: Text("API Key Configuration"), footer: Text("Your API key is stored locally on this device in private storage and is never committed or tracked in Git.")) {
-                    SecureField("Paste API Key", text: $apiKeyInput)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                }
-                
-                if MultimodalConfig.hasConfiguredKey {
-                    Section {
-                        Button(role: .destructive) {
-                            MultimodalConfig.apiKey = ""
-                            apiKeyInput = ""
-                        } label: {
-                            Text("Clear Stored Key")
-                        }
-                    }
-                }
-            }
-            .navigationTitle("Multimodal Setup")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") {
-                        showAPIKeySheet = false
-                    }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Save") {
-                        MultimodalConfig.apiKey = apiKeyInput
-                        showAPIKeySheet = false
-                    }
-                    .disabled(apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
+    private var speechStatusTelemetryTitle: String {
+        switch speechService.status {
+        case .idle: return "Idle"
+        case .listening: return "Listening (PCM Tap Active)"
+        case .finalizing: return "Finalizing"
+        case .unauthorized: return "Unauthorized"
+        case .unavailable: return "Unavailable"
+        case .failed: return "Error"
         }
-        .presentationDetents([.medium])
     }
     
     // MARK: - Fallback State Views
@@ -633,7 +1060,7 @@ struct CameraView: View {
                 .fontWeight(.bold)
                 .foregroundStyle(.white)
             
-            Text("TestApp needs camera permission to capture visual input for identification. Please enable Camera access in iOS Settings.")
+            Text("This app needs camera permission to help you understand what's around you. Please enable Camera access in Settings.")
                 .font(.body)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.white.opacity(0.8))
@@ -663,7 +1090,7 @@ struct CameraView: View {
                 .fontWeight(.bold)
                 .foregroundStyle(.white)
             
-            Text("No camera device was detected. If running on iOS Simulator, test on a physical iOS device with a camera.")
+            Text("No camera was detected. Please use a device with a camera.")
                 .font(.body)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.white.opacity(0.8))

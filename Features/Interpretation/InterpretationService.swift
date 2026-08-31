@@ -275,7 +275,7 @@ final class InterpretationService: @unchecked Sendable {
             } else {
                 return InterpretationResult(
                     primaryHeadline: "Currency / Banknote (Denomination Unclear)",
-                    detailedDescription: "Identified as currency paper. Hold steady for automatic AI denomination assistance.",
+                    detailedDescription: "Identified as currency paper. Tap Analyze for AI visual details.",
                     confidence: .moderate,
                     cautionaryNote: "Denomination text not yet visible in frame.",
                     contributingSources: [.onDeviceVision],
@@ -318,7 +318,7 @@ final class InterpretationService: @unchecked Sendable {
             let formattedTitle = formatTaxonomyTitle(vision)
             return InterpretationResult(
                 primaryHeadline: formattedTitle,
-                detailedDescription: "Broad category detected on-device. Hold camera steady for automatic AI visual analysis.",
+                detailedDescription: "Broad category detected on-device. Tap Analyze for AI visual details.",
                 confidence: .moderate,
                 cautionaryNote: nil,
                 contributingSources: [.onDeviceVision],

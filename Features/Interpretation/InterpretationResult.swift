@@ -70,8 +70,8 @@ struct InterpretationResult: Equatable, Sendable {
     // MARK: - Initial / Idle State
     
     static let initial = InterpretationResult(
-        primaryHeadline: "Awaiting visual input...",
-        detailedDescription: "Point camera steadily at an object or banknote to begin automatic visual understanding.",
+        primaryHeadline: "Point at something",
+        detailedDescription: "Hold the bottom of the screen and ask a question.",
         confidence: .insufficient,
         cautionaryNote: nil,
         contributingSources: [],

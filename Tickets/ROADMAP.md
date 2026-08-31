@@ -15,10 +15,11 @@ This file tracks the evolving high-level roadmap for the 10-day Act Phase challe
 | **T003** | **Vision Classification Baseline (Banknotes)** | `Complete` | Built-in Vision request on structured banknotes | T002 |
 | **T004** | **Multimodal Understanding Baseline** | `Complete` | Compare Vision+OCR vs Multimodal contextual reasoning | T003 |
 | **T005** | **Interpretation & Decision Layer** | `Complete` | Combine Vision, OCR, and Multimodal evidence into structured result with automatic scene-change detection | T004 |
-| **T006** | **Spoken Accessibility Output (Voice/Audio)** | `Planned` | Speech synthesis / accessible spoken readout of interpreted result | T005 |
-| **T007** | **Vision Exploration on Local Spices** | `Planned` | Test Vision & Multimodal limits on ambiguous spices | T005 |
-| **T008** | **Real-World Input & Uncertainty Handling** | `Planned` | Lighting/blur tests, confidence thresholds, fallback states | T007 |
-| **T009** | **Create ML Feasibility & Evaluation** | `Planned` | Evaluate custom model need vs built-in, prepare final prototype | T008 |
+| **T006** | **Reliability & Real-World Evaluation** | `In Progress` | Evaluate pipeline consistency, latency, accuracy, and failure modes across real-world physical conditions | T005 |
+| **T007** | **Conversational Multimodal Interaction** | `In Progress` | Voice-driven question answering combining camera frames with user speech | T006 |
+| **T008** | **Spoken Accessibility Output & Audio Feedback** | `Planned` | Speech synthesis (TTS), audio haptics, and VoiceOver harmony | T007 |
+| **T009** | **Vision Exploration on Local Spices** | `Planned` | Test Vision & Multimodal limits on ambiguous spices | T007 |
+| **T010** | **Create ML Feasibility & Evaluation** | `Planned` | Evaluate custom model need vs built-in, prepare final prototype | T009 |
 
 ---
 
@@ -37,4 +38,6 @@ This file tracks the evolving high-level roadmap for the 10-day Act Phase challe
 - **2026-08-27**: T003 completed; baseline Vision + OCR documented.
 - **2026-08-27**: T004 completed; multimodal in-app proof of concept, prompt generalization, and empirical benchmarks verified on physical iPhone.
 - **2026-08-28**: T005 completed; interpretation & decision layer, multi-signal scene divergence tracking, and clean plain-text output verified on physical iPhone.
+- **2026-08-28**: T006 initialized as Reliability & Real-World Evaluation (`In Progress`).
+- **2026-08-28**: T007 initialized as Conversational Multimodal Interaction (`In Progress`).
 
