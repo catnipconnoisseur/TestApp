@@ -406,8 +406,8 @@ Ticket → Implement → Test → Commit → main
 
 # 15. Current Development State
 
-* **Active Ticket:** **T004 — Multimodal Understanding Baseline** `[Complete]`
-* **Next Ready Ticket:** **T005 — Spoken Accessibility Output (Voice/Audio)** `[Planned]`
+* **Active Ticket:** **T007 — Conversational Multimodal Interaction** `[In Progress]`
+* **Next Ready Ticket:** **T008 — Spoken Accessibility Output & Audio Feedback** `[Planned]`
 
 ---
 

@@ -57,7 +57,10 @@ struct CameraView: View {
     @State private var lastAnalyzedScene: AnalyzedSceneReference?
     @State private var sceneDivergenceStartTime: Date?
     @State private var lastVisualObservationTime: Date = Date()
-    @State private var hasActiveMultimodalResult: Bool = false
+    
+    // Conversation State & Persistent AI Answer
+    @State private var currentAIAnswer: InterpretationResult? = nil
+    @State private var liveVisionInterpretation: InterpretationResult = .initial
     
     // Request State & In-Flight Guards
     @State private var isRequestInFlight = false
@@ -79,8 +82,13 @@ struct CameraView: View {
     @State private var lastMultimodalStatus: MultimodalService.ResponseStatus = .idle
     @State private var lastDivergenceScore: Float = 0.0
     
-    // Displayed Interpretation State (Single Source of Truth)
-    @State private var displayedInterpretation: InterpretationResult = .initial
+    // Computed Current Interpretation
+    private var displayedInterpretation: InterpretationResult {
+        if let aiAnswer = currentAIAnswer {
+            return aiAnswer
+        }
+        return liveVisionInterpretation
+    }
     
     // Interaction State
     @State private var interactionState: InteractionState = .idle
@@ -91,6 +99,10 @@ struct CameraView: View {
     
     // Microphone permission tracking for fallback
     @State private var microphoneAvailable: Bool = true
+    
+    // TEMPORARY T007.2 TEST INPUT — REMOVE AFTER TESTING
+    @State private var testQuestionInput: String = ""
+    // END TEMPORARY T007.2 TEST INPUT
     
     var body: some View {
         ZStack {
@@ -150,6 +162,10 @@ struct CameraView: View {
                 // Top Bar: Settings only
                 topBar
                 
+                // TEMPORARY T007.2 TEST INPUT — REMOVE AFTER TESTING
+                temporaryTestingInputBar
+                // END TEMPORARY T007.2 TEST INPUT
+                
                 Spacer()
                 
                 // Speech feedback (shown during/after voice interaction)
@@ -169,6 +185,66 @@ struct CameraView: View {
             }
         }
     }
+    
+    // MARK: - TEMPORARY T007.2 TEST INPUT — REMOVE AFTER TESTING
+    
+    private var temporaryTestingInputBar: some View {
+        HStack(spacing: 8) {
+            TextField("Type a question for testing...", text: $testQuestionInput)
+                .textFieldStyle(.plain)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.18)))
+                .foregroundStyle(.white)
+                .tint(.blue)
+                .accessibilityLabel("Test question input")
+                .accessibilityHint("Enter a question to test Gemini multimodal reasoning.")
+            
+            Button {
+                let textToSubmit = testQuestionInput
+                // Dismiss keyboard
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                
+                // Capture current camera snapshot
+                let snapshot = cameraManager.captureCurrentFrameJPEG()
+                let sceneRef = AnalyzedSceneReference(
+                    dominantClassification: cameraManager.latestResult.topClassification?.identifier,
+                    ocrTextFingerprint: cameraManager.latestResult.combinedText,
+                    featurePrint: cameraManager.latestResult.featurePrint,
+                    analyzedAt: Date()
+                )
+                
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    showSpeechCard = true
+                }
+                
+                submitQuestion(
+                    textToSubmit,
+                    capturedSnapshot: snapshot,
+                    sceneReference: sceneRef,
+                    triggerType: "Test-Text"
+                )
+            } label: {
+                Text("Ask AI (Test)")
+                    .font(.caption)
+                    .fontWeight(.bold)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(isRequestInFlight ? Color.gray : Color.purple))
+            }
+            .disabled(isRequestInFlight)
+            .accessibilityLabel("Ask AI for typed test question")
+            .accessibilityHint("Submits the typed question and current camera image to Gemini.")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 14).fill(Color.black.opacity(0.75)))
+        .padding(.horizontal, 12)
+        .padding(.top, 4)
+    }
+    
+    // END TEMPORARY T007.2 TEST INPUT
     
     // MARK: - Top Bar (Settings Only)
     
@@ -198,58 +274,35 @@ struct CameraView: View {
         let now = Date()
         let hasVisuals = recognition.hasObservations
         
-        // 1. Empty Scene Invalidation: Camera pointed away into empty space for > 0.6s
+        // 1. Empty Scene Invalidation: If camera pointed away into empty space for > 0.6s
         if !hasVisuals {
             if now.timeIntervalSince(lastVisualObservationTime) > 0.6 {
-                if hasActiveMultimodalResult {
-                    print("[SCENE] Scene cleared. Reverting to continuous local Vision.")
-                    hasActiveMultimodalResult = false
-                    lastAnalyzedScene = nil
-                }
-                displayedInterpretation = .initial
+                liveVisionInterpretation = .initial
             }
             return
         }
         
         lastVisualObservationTime = now
         
-        // 2. If a Multimodal Result is currently displayed, check for physical scene change
-        if hasActiveMultimodalResult, let reference = lastAnalyzedScene {
+        // 2. Track scene divergence against the last analyzed scene (for diagnostics & contextual awareness)
+        // NOTE: Scene divergence does NOT erase the persistent AI answer (T007.3).
+        if let reference = lastAnalyzedScene {
             let (divergence, reason) = interpretationService.computeSceneDivergence(current: recognition, reference: reference)
             lastDivergenceScore = divergence
-            
             if divergence >= divergenceThreshold {
                 if sceneDivergenceStartTime == nil {
                     sceneDivergenceStartTime = now
-                    print("[SCENE] Scene change in progress (\(reason ?? "divergence")). Starting confirmation...")
-                }
-                
-                let divergenceDuration = now.timeIntervalSince(sceneDivergenceStartTime ?? now)
-                
-                if divergenceDuration >= sceneChangeConfirmationSeconds {
-                    print("[SCENE] Scene change confirmed. Clearing multimodal result and showing live local Vision.")
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        hasActiveMultimodalResult = false
-                        lastAnalyzedScene = nil
-                        sceneDivergenceStartTime = nil
-                        displayedInterpretation = interpretationService.interpret(recognition: recognition)
-                        // Clear speech card when scene changes
-                        showSpeechCard = false
-                        lastSpokenQuestion = nil
-                    }
-                    return
+                    print("[SCENE] Scene change observed (\(reason ?? "divergence")). Persistent AI answer remains visible.")
                 }
             } else {
-                // Returned to analyzed object
                 if sceneDivergenceStartTime != nil {
                     sceneDivergenceStartTime = nil
                 }
             }
-            return // Multimodal result takes precedence until user points at a new object
         }
         
-        // 3. Continuous Local Vision + OCR Interpretation (Never triggers cloud API)
-        displayedInterpretation = interpretationService.interpret(recognition: recognition)
+        // 3. Continuous Local Vision + OCR Interpretation (for live viewfinder when no AI answer is active)
+        liveVisionInterpretation = interpretationService.interpret(recognition: recognition)
     }
     
     // MARK: - User-Initiated Manual Analysis Fallback (Microphone Denied)
@@ -308,9 +361,8 @@ struct CameraView: View {
                     )
                     
                     withAnimation(.easeInOut(duration: 0.25)) {
-                        self.displayedInterpretation = synthesized
+                        self.currentAIAnswer = synthesized
                         self.lastAnalyzedScene = snapshotReference
-                        self.hasActiveMultimodalResult = true
                         self.interactionState = .answered
                     }
                     
@@ -348,7 +400,7 @@ struct CameraView: View {
             interactionState = .listening
         }
         
-        UIAccessibility.post(notification: .announcement, argument: "Listening")
+        UIAccessibility.post(notification: .announcement, argument: "Listening.")
         
         Task {
             let granted = await speechService.requestPermissions()
@@ -370,57 +422,78 @@ struct CameraView: View {
         
         Task {
             // Await on-device speech transcription finalization (< 250ms)
-            guard let question = await speechService.stopRecordingAndGetTranscript() else {
-                print("[VOICE] Speech input empty or cancelled. Zero Gemini calls made.")
-                await MainActor.run {
-                    self.pendingVoiceSnapshot = nil
-                    self.pendingVoiceReference = nil
-                    self.interactionState = .idle
-                }
-                return
-            }
-            
-            // Check API Key
-            guard MultimodalConfig.hasConfiguredKey else {
-                await MainActor.run {
-                    showSettingsSheet = true
-                    self.pendingVoiceSnapshot = nil
-                    self.pendingVoiceReference = nil
-                    self.interactionState = .idle
-                }
-                return
-            }
-            
-            // Obtain captured snapshot (or fallback to live frame)
-            guard let jpegData = self.pendingVoiceSnapshot ?? self.cameraManager.captureCurrentFrameJPEG() else {
-                print("[VOICE] Frame data missing for query.")
-                await MainActor.run { self.interactionState = .idle }
-                return
-            }
-            
-            let sceneRef = self.pendingVoiceReference ?? AnalyzedSceneReference(
-                dominantClassification: self.cameraManager.latestResult.topClassification?.identifier,
-                ocrTextFingerprint: self.cameraManager.latestResult.combinedText,
-                featurePrint: self.cameraManager.latestResult.featurePrint,
-                analyzedAt: Date()
-            )
-            
+            let rawQuestion = await speechService.stopRecordingAndGetTranscript()
             await MainActor.run {
-                self.lastSpokenQuestion = question
-                self.isRequestInFlight = true
-                self.isProcessingVoiceQuery = true
-                self.lastTriggerType = "Voice"
-                self.lastRequestTimestamp = Date()
-                self.interactionState = .thinking
-                
-                UIAccessibility.post(notification: .announcement, argument: "Thinking")
+                self.submitQuestion(
+                    rawQuestion,
+                    capturedSnapshot: self.pendingVoiceSnapshot,
+                    sceneReference: self.pendingVoiceReference,
+                    triggerType: "Voice"
+                )
             }
-            
-            let requestStartTime = Date()
-            let prompt = MultimodalService.buildVoiceQuestionPrompt(userQuestion: question)
-            
-            print("[VOICE] Sending Gemini voice query for: \"\(question)\" (\(jpegData.count) bytes)...")
-            
+        }
+    }
+    
+    /// Unified submission pipeline for questions originating from SpeechService or temporary typed test input.
+    private func submitQuestion(
+        _ rawQuestion: String?,
+        capturedSnapshot: Data? = nil,
+        sceneReference: AnalyzedSceneReference? = nil,
+        triggerType: String = "Voice"
+    ) {
+        guard !isRequestInFlight else { return }
+        
+        guard let rawQuestion = rawQuestion,
+              !rawQuestion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            print("[\(triggerType.uppercased())] Question empty or cancelled. Zero Gemini calls made.")
+            self.pendingVoiceSnapshot = nil
+            self.pendingVoiceReference = nil
+            self.interactionState = .idle
+            self.lastSpokenQuestion = "I didn't hear a question. Hold and ask again."
+            UIAccessibility.post(notification: .announcement, argument: "I didn't hear a question. Hold and ask again.")
+            return
+        }
+        
+        let question = rawQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Check API Key
+        guard MultimodalConfig.hasConfiguredKey else {
+            showSettingsSheet = true
+            self.pendingVoiceSnapshot = nil
+            self.pendingVoiceReference = nil
+            self.interactionState = .idle
+            return
+        }
+        
+        // Obtain captured snapshot (or fallback to live frame)
+        guard let jpegData = capturedSnapshot ?? self.pendingVoiceSnapshot ?? self.cameraManager.captureCurrentFrameJPEG() else {
+            print("[\(triggerType.uppercased())] Frame data missing for query.")
+            self.interactionState = .idle
+            return
+        }
+        
+        let sceneRef = sceneReference ?? self.pendingVoiceReference ?? AnalyzedSceneReference(
+            dominantClassification: self.cameraManager.latestResult.topClassification?.identifier,
+            ocrTextFingerprint: self.cameraManager.latestResult.combinedText,
+            featurePrint: self.cameraManager.latestResult.featurePrint,
+            analyzedAt: Date()
+        )
+        
+        self.lastSpokenQuestion = question
+        self.isRequestInFlight = true
+        self.isProcessingVoiceQuery = (triggerType == "Voice")
+        self.lastTriggerType = triggerType
+        self.lastRequestTimestamp = Date()
+        self.interactionState = .thinking
+        
+        UIAccessibility.post(notification: .announcement, argument: "Analyzing your question.")
+        
+        let requestStartTime = Date()
+        let prompt = MultimodalService.buildVoiceQuestionPrompt(userQuestion: question)
+        
+        print("[\(triggerType.uppercased())] Sending Gemini query for: \"\(question)\" (\(jpegData.count) bytes)...")
+        
+        Task {
             let result = await multimodalService.analyzeImage(
                 jpegData: jpegData,
                 prompt: prompt,
@@ -439,7 +512,7 @@ struct CameraView: View {
                 self.lastAnalyzedPayloadBytes = jpegData.count
                 
                 if result.status == .success && !result.text.isEmpty {
-                    print("[VOICE] Gemini SUCCESS (\(Int(result.latencyMs))ms) - Response length: \(result.text.count)")
+                    print("[\(triggerType.uppercased())] Gemini SUCCESS (\(Int(result.latencyMs))ms) - Response length: \(result.text.count)")
                     
                     let synthesized = self.interpretationService.interpret(
                         recognition: self.cameraManager.latestResult,
@@ -447,9 +520,8 @@ struct CameraView: View {
                     )
                     
                     withAnimation(.easeInOut(duration: 0.25)) {
-                        self.displayedInterpretation = synthesized
+                        self.currentAIAnswer = synthesized
                         self.lastAnalyzedScene = sceneRef
-                        self.hasActiveMultimodalResult = true
                         self.interactionState = .answered
                     }
                     
@@ -465,41 +537,42 @@ struct CameraView: View {
     
     private func handleGeminiFailure(result: MultimodalService.MultimodalResult, sceneRef: AnalyzedSceneReference) {
         let failureReason = result.status.displayTelemetryTitle
-        print("[AI] Request failed (\(failureReason)). Showing clean local fallback.")
-        
-        var localFallback = self.interpretationService.interpret(
-            recognition: self.cameraManager.latestResult
-        )
+        print("[AI] Request failed (\(failureReason)). Showing failure notification.")
         
         let userMessage: String
         if result.status.isRateLimited {
             userMessage = "The service is temporarily busy. Please try again in a moment."
         } else if case .networkError = result.status {
-            userMessage = "Could not connect. Check your internet connection and try again."
+            userMessage = "I couldn't connect. Check your internet connection and try again."
         } else if case .authenticationError = result.status {
             userMessage = "API key issue. Check your key in Settings."
         } else {
-            userMessage = "Something went wrong. Please try again."
+            userMessage = "I couldn't determine an answer from this image. Try asking again or repositioning the camera."
         }
         
-        localFallback = InterpretationResult(
-            primaryHeadline: localFallback.primaryHeadline,
-            detailedDescription: localFallback.detailedDescription,
-            confidence: localFallback.confidence,
-            cautionaryNote: userMessage,
-            contributingSources: localFallback.contributingSources,
-            isSpecificIdentification: localFallback.isSpecificIdentification,
-            timestamp: Date()
-        )
+        // If there is no previous AI answer, update liveVisionInterpretation to display the helpful error note
+        if currentAIAnswer == nil {
+            let localFallback = self.interpretationService.interpret(
+                recognition: self.cameraManager.latestResult
+            )
+            self.liveVisionInterpretation = InterpretationResult(
+                primaryHeadline: localFallback.primaryHeadline,
+                detailedDescription: localFallback.detailedDescription,
+                confidence: localFallback.confidence,
+                cautionaryNote: userMessage,
+                contributingSources: localFallback.contributingSources,
+                isSpecificIdentification: localFallback.isSpecificIdentification,
+                timestamp: Date()
+            )
+        }
         
         withAnimation(.easeInOut(duration: 0.25)) {
-            self.displayedInterpretation = localFallback
-            self.lastAnalyzedScene = sceneRef
-            self.hasActiveMultimodalResult = false
             self.interactionState = .error(userMessage)
         }
         
-        // Reset to idle after brief error display
+        UIAccessibility.post(notification: .announcement, argument: userMessage)
+        
+        // Reset to idle after brief error display (persistent AI answer remains intact)
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
             if case .error = self.interactionState {
                 self.interactionState = .idle
@@ -560,7 +633,7 @@ struct CameraView: View {
                 
                 // Hint text (idle only)
                 if case .idle = interactionState {
-                    Text("\"What is this?\"")
+                    Text(currentAIAnswer != nil ? "\"What is it used for?\"" : "\"What is this?\"")
                         .font(.caption)
                         .foregroundStyle(.white.opacity(0.5))
                         .italic()
@@ -620,7 +693,7 @@ struct CameraView: View {
     private var voiceAreaLabel: String {
         switch interactionState {
         case .idle, .answered:
-            return "Hold and ask a question"
+            return currentAIAnswer != nil ? "Hold and ask another question" : "Hold and ask a question"
         case .listening:
             return "Listening…"
         case .thinking:
@@ -633,13 +706,13 @@ struct CameraView: View {
     private var voiceAreaAccessibilityLabel: String {
         switch interactionState {
         case .listening:
-            return "Listening to your question"
+            return "Listening."
         case .thinking:
-            return "Thinking about your question"
+            return "Analyzing your question."
         case .error(let msg):
             return msg
         default:
-            return "Hold to ask a question about what the camera sees"
+            return "Hold to ask a question about what the camera sees."
         }
     }
     
@@ -761,12 +834,12 @@ struct CameraView: View {
     private func resetSessionState() {
         sceneDivergenceStartTime = nil
         lastAnalyzedScene = nil
-        hasActiveMultimodalResult = false
+        currentAIAnswer = nil
+        liveVisionInterpretation = .initial
         isRequestInFlight = false
         isProcessingVoiceQuery = false
         pendingVoiceSnapshot = nil
         pendingVoiceReference = nil
-        displayedInterpretation = .initial
         interactionState = .idle
         interpretationService.resetStability()
     }
