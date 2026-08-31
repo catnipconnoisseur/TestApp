@@ -489,7 +489,8 @@ struct CameraView: View {
         UIAccessibility.post(notification: .announcement, argument: "Analyzing your question.")
         
         let requestStartTime = Date()
-        let prompt = MultimodalService.buildVoiceQuestionPrompt(userQuestion: question)
+        let previousContext = self.currentAIAnswer.map { "\($0.primaryHeadline): \($0.detailedDescription ?? "")" }
+        let prompt = MultimodalService.buildVoiceQuestionPrompt(userQuestion: question, previousContext: previousContext)
         
         print("[\(triggerType.uppercased())] Sending Gemini query for: \"\(question)\" (\(jpegData.count) bytes)...")
         

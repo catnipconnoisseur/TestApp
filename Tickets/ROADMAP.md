@@ -15,10 +15,10 @@ This file tracks the evolving high-level roadmap for the 10-day Act Phase challe
 | **T003** | **Vision Classification Baseline (Banknotes)** | `Complete` | Built-in Vision request on structured banknotes | T002 |
 | **T004** | **Multimodal Understanding Baseline** | `Complete` | Compare Vision+OCR vs Multimodal contextual reasoning | T003 |
 | **T005** | **Interpretation & Decision Layer** | `Complete` | Combine Vision, OCR, and Multimodal evidence into structured result with automatic scene-change detection | T004 |
-| **T006** | **Reliability & Real-World Evaluation** | `In Progress` | Evaluate pipeline consistency, latency, accuracy, and failure modes across real-world physical conditions | T005 |
-| **T007** | **Conversational Multimodal Interaction** | `In Progress` | Voice-driven question answering combining camera frames with user speech | T006 |
-| **T008** | **Spoken Accessibility Output & Audio Feedback** | `Planned` | Speech synthesis (TTS), audio haptics, and VoiceOver harmony | T007 |
-| **T009** | **Vision Exploration on Local Spices** | `Planned` | Test Vision & Multimodal limits on ambiguous spices | T007 |
+| **T006** | **Reliability & Real-World Evaluation** | `Complete` | Evaluate pipeline consistency, latency, accuracy, and failure modes across real-world physical conditions | T005 |
+| **T007** | **Conversational Multimodal Interaction** | `Complete` | Voice-driven question answering combining camera frames with user speech and persistent answer state | T006 |
+| **T008** | **Accessibility Experience & Intelligent Assistance** | `In Progress` | UX audit, assistant mental model, automatic vs on-demand matrix, and failure modes | T007 |
+| **T009** | **Conversational Memory & Accessibility Feedback** | `Planned` | Scene-anchored conversational memory, repeat answer gesture, and tactile progress feedback | T008 |
 | **T010** | **Create ML Feasibility & Evaluation** | `Planned` | Evaluate custom model need vs built-in, prepare final prototype | T009 |
 
 ---
@@ -38,6 +38,7 @@ This file tracks the evolving high-level roadmap for the 10-day Act Phase challe
 - **2026-08-27**: T003 completed; baseline Vision + OCR documented.
 - **2026-08-27**: T004 completed; multimodal in-app proof of concept, prompt generalization, and empirical benchmarks verified on physical iPhone.
 - **2026-08-28**: T005 completed; interpretation & decision layer, multi-signal scene divergence tracking, and clean plain-text output verified on physical iPhone.
-- **2026-08-28**: T006 initialized as Reliability & Real-World Evaluation (`In Progress`).
-- **2026-08-28**: T007 initialized as Conversational Multimodal Interaction (`In Progress`).
+- **2026-08-28**: T006 completed; real-world evaluation, request policies, and user-initiated multimodal pipeline verified.
+- **2026-08-31**: T007 completed; on-device speech transcription, multimodal voice query, and persistent answer state verified.
+- **2026-08-31**: T008 initialized as Accessibility Experience & Intelligent Assistance (`In Progress`).
 
