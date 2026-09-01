@@ -383,11 +383,18 @@ final class InterpretationService: @unchecked Sendable {
     private func cleanHeadlineString(_ raw: String) -> String {
         var cleaned = raw
         let prefixesToStrip = [
+            "based on the image, this is an ", "based on the image, this is a ", "based on the image, this is ",
+            "based on the image, it is an ", "based on the image, it is a ", "based on the image, it is ",
+            "based on the image, ", "upon analyzing the image, ", "upon analyzing, ",
+            "the main object visible in the image is a ", "the main object visible in the image is an ", "the main object visible in the image is ",
+            "the object visible in the image is a ", "the object visible in the image is an ", "the object visible in the image is ",
+            "the image shows an ", "the image shows a ", "the image shows ",
             "this appears to be an ", "this appears to be a ", "this appears to be ",
             "this is an ", "this is a ", "this is ",
-            "the main object visible in the image is a ", "the main object visible in the image is an ", "the main object visible in the image is ",
-            "the image shows an ", "the image shows a ", "the image shows ",
-            "it is an ", "it is a ", "it is "
+            "it appears to be an ", "it appears to be a ", "it appears to be ",
+            "it is an ", "it is a ", "it is ",
+            "it's an ", "it's a ", "it's ",
+            "i can see an ", "i can see a ", "i can see "
         ]
         for prefix in prefixesToStrip {
             if cleaned.lowercased().hasPrefix(prefix) {
