@@ -38,6 +38,12 @@ final class VisionService: @unchecked Sendable {
             let textRequest = VNRecognizeTextRequest()
             textRequest.recognitionLevel = .accurate
             textRequest.usesLanguageCorrection = false
+            textRequest.recognitionLanguages = ["id-ID", "en-US"]
+            textRequest.customWords = [
+                "Rupiah", "Bank Indonesia", "Indonesia",
+                "100000", "50000", "20000", "10000", "5000", "2000", "1000",
+                "Emisi", "Negara Kesatuan", "Gubernur", "Direktur"
+            ]
             
             // 3. Built-in Feature Print Embedding Request (Visual Fingerprint)
             let featurePrintRequest = VNGenerateImageFeaturePrintRequest()
@@ -56,14 +62,14 @@ final class VisionService: @unchecked Sendable {
                     result.classifications = Array(topItems)
                 }
                 
-                // Parse OCR Text observations
+                // Parse OCR Text observations (capture up to 15 items across entire frame)
                 if let textObservations = textRequest.results {
                     let topTexts = textObservations
                         .compactMap { observation -> RecognitionResult.RecognizedTextItem? in
                             guard let candidate = observation.topCandidates(1).first else { return nil }
                             return RecognitionResult.RecognizedTextItem(text: candidate.string, confidence: candidate.confidence)
                         }
-                        .prefix(5)
+                        .prefix(15)
                     
                     result.recognizedTexts = Array(topTexts)
                 }

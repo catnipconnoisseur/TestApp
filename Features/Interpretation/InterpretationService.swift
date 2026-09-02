@@ -31,34 +31,84 @@ final class InterpretationService: @unchecked Sendable {
     // MARK: - Indonesian Currency Validation Helper
     
     private let validRupiahDenominations: [String: String] = [
+        // 100,000 Rupiah (Red / Soekarno-Hatta)
         "100000": "Rp100,000",
         "100.000": "Rp100,000",
+        "100,000": "Rp100,000",
+        "100 000": "Rp100,000",
         "100k": "Rp100,000",
+        "100rb": "Rp100,000",
+        "100 rb": "Rp100,000",
         "seratus ribu": "Rp100,000",
+        "soekarno": "Rp100,000",
+        "hatta": "Rp100,000",
+        
+        // 50,000 Rupiah (Blue / Djuanda)
         "50000": "Rp50,000",
         "50.000": "Rp50,000",
+        "50,000": "Rp50,000",
+        "50 000": "Rp50,000",
         "50k": "Rp50,000",
+        "50rb": "Rp50,000",
+        "50 rb": "Rp50,000",
         "lima puluh ribu": "Rp50,000",
+        "djuanda": "Rp50,000",
+        
+        // 20,000 Rupiah (Green / Sam Ratulangi)
         "20000": "Rp20,000",
         "20.000": "Rp20,000",
+        "20,000": "Rp20,000",
+        "20 000": "Rp20,000",
         "20k": "Rp20,000",
+        "20rb": "Rp20,000",
+        "20 rb": "Rp20,000",
         "dua puluh ribu": "Rp20,000",
+        "ratulangi": "Rp20,000",
+        
+        // 10,000 Rupiah (Purple / Frans Kaisiepo)
         "10000": "Rp10,000",
         "10.000": "Rp10,000",
+        "10,000": "Rp10,000",
+        "10 000": "Rp10,000",
         "10k": "Rp10,000",
+        "10rb": "Rp10,000",
+        "10 rb": "Rp10,000",
         "sepuluh ribu": "Rp10,000",
+        "kaisiepo": "Rp10,000",
+        
+        // 5,000 Rupiah (Brown / Idham Chalid)
         "5000": "Rp5,000",
         "5.000": "Rp5,000",
+        "5,000": "Rp5,000",
+        "5 000": "Rp5,000",
         "5k": "Rp5,000",
+        "5rb": "Rp5,000",
+        "5 rb": "Rp5,000",
         "lima ribu": "Rp5,000",
+        "idham chalid": "Rp5,000",
+        
+        // 2,000 Rupiah (Grey / Mohammad Hoesni Thamrin)
         "2000": "Rp2,000",
         "2.000": "Rp2,000",
+        "2,000": "Rp2,000",
+        "2 000": "Rp2,000",
         "2k": "Rp2,000",
+        "2rb": "Rp2,000",
+        "2 rb": "Rp2,000",
         "dua ribu": "Rp2,000",
+        "hoesni thamrin": "Rp2,000",
+        "thamrin": "Rp2,000",
+        
+        // 1,000 Rupiah (Yellow-Green / Tjut Meutia)
         "1000": "Rp1,000",
         "1.000": "Rp1,000",
+        "1,000": "Rp1,000",
+        "1 000": "Rp1,000",
         "1k": "Rp1,000",
-        "seribu": "Rp1,000"
+        "1rb": "Rp1,000",
+        "1 rb": "Rp1,000",
+        "seribu": "Rp1,000",
+        "meutia": "Rp1,000"
     ]
     
     // MARK: - Multi-Signal Scene Divergence Evaluation
@@ -194,11 +244,24 @@ final class InterpretationService: @unchecked Sendable {
         // Parse structured plain-text response (HEADLINE: and DESCRIPTION:)
         let (parsedHeadline, parsedDescription) = parseStructuredMultimodalText(multimodalText)
         let lowerDesc = parsedDescription.lowercased()
+        let lowerHeadline = parsedHeadline.lowercased()
+        let isCurrencyContext = lowerDesc.contains("banknote") || lowerDesc.contains("rupiah") ||
+            lowerDesc.contains("currency") || lowerDesc.contains("indonesian") ||
+            lowerHeadline.contains("banknote") || lowerHeadline.contains("rupiah") ||
+            lowerHeadline.contains("rp") || lowerHeadline.contains("money") ||
+            topVisionIdentifier?.lowercased().contains("currency") == true ||
+            topVisionIdentifier?.lowercased().contains("money") == true
         
         // Scenario A: Indonesian Banknote / Currency
-        if lowerDesc.contains("banknote") || lowerDesc.contains("rupiah") || lowerDesc.contains("currency") || lowerDesc.contains("indonesian") {
-            let confirmedDenomination = extractRupiahDenomination(from: parsedDescription) ?? detectedRupiah
-            let denominationUnclear = lowerDesc.contains("unclear") || lowerDesc.contains("cannot determine") || lowerDesc.contains("unable to determine") || lowerDesc.contains("uncertain")
+        if isCurrencyContext {
+            let confirmedDenomination = extractRupiahDenomination(from: parsedHeadline)
+                ?? extractRupiahDenomination(from: parsedDescription)
+                ?? detectedRupiah
+            let denominationUnclear = lowerDesc.contains("unclear") ||
+                lowerDesc.contains("cannot determine") ||
+                lowerDesc.contains("unable to determine") ||
+                lowerDesc.contains("uncertain") ||
+                lowerHeadline.contains("unclear")
             
             if let denomination = confirmedDenomination, !denominationUnclear {
                 return InterpretationResult(
@@ -215,7 +278,7 @@ final class InterpretationService: @unchecked Sendable {
                     primaryHeadline: "Indonesian Banknote (Denomination Unclear)",
                     detailedDescription: parsedDescription,
                     confidence: .moderate,
-                    cautionaryNote: "Specific denomination could not be determined. Flatten the note or adjust lighting.",
+                    cautionaryNote: "Specific denomination could not be confirmed. Try turning or flattening the note under good light.",
                     contributingSources: sources,
                     isSpecificIdentification: false,
                     timestamp: Date()
@@ -433,16 +496,56 @@ final class InterpretationService: @unchecked Sendable {
     // MARK: - String Helpers
     
     private func extractRupiahDenomination(from text: String) -> String? {
-        let cleaned = text.lowercased()
+        let rawLower = text.lowercased()
+        let cleaned = rawLower
             .replacingOccurrences(of: "\n", with: " ")
             .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "rp.", with: "rp ")
+            .replacingOccurrences(of: "idr", with: "rp")
         
+        // 1. Direct dictionary match with longest keys first
         let sortedKeys = validRupiahDenominations.keys.sorted(by: { $0.count > $1.count })
         for key in sortedKeys {
             if cleaned.contains(key) {
                 return validRupiahDenominations[key]
             }
         }
+        
+        // 2. Normalized numerical digits check (e.g. "rp 50000", "50 000 rupiah")
+        let digitsOnly = cleaned.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
+        if digitsOnly.contains("100000") { return "Rp100,000" }
+        if digitsOnly.contains("50000") { return "Rp50,000" }
+        if digitsOnly.contains("20000") { return "Rp20,000" }
+        if digitsOnly.contains("10000") { return "Rp10,000" }
+        if digitsOnly.contains("5000") { return "Rp5,000" }
+        if digitsOnly.contains("2000") { return "Rp2,000" }
+        if digitsOnly.contains("1000") { return "Rp1,000" }
+        
+        // 3. Color-based currency synthesis when currency context is strong
+        if cleaned.contains("banknote") || cleaned.contains("rupiah") || cleaned.contains("currency") {
+            if cleaned.contains("red") || cleaned.contains("pink") || cleaned.contains("merah") {
+                return "Rp100,000"
+            }
+            if cleaned.contains("blue") || cleaned.contains("biru") {
+                return "Rp50,000"
+            }
+            if cleaned.contains("green") || cleaned.contains("hijau") {
+                return "Rp20,000"
+            }
+            if cleaned.contains("purple") || cleaned.contains("violet") || cleaned.contains("ungu") {
+                return "Rp10,000"
+            }
+            if cleaned.contains("brown") || cleaned.contains("cokelat") || cleaned.contains("tan") {
+                return "Rp5,000"
+            }
+            if cleaned.contains("grey") || cleaned.contains("gray") || cleaned.contains("abu-abu") || cleaned.contains("abu abu") {
+                return "Rp2,000"
+            }
+            if cleaned.contains("olive") || cleaned.contains("yellow-green") {
+                return "Rp1,000"
+            }
+        }
+        
         return nil
     }
     

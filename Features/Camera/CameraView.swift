@@ -353,10 +353,20 @@ struct CameraView: View {
         
         AccessibilityVoiceService.shared.speak("Analyzing image.")
         
+        var onDeviceHints: [String] = []
+        if !cameraManager.latestResult.recognizedTexts.isEmpty {
+            let topTexts = cameraManager.latestResult.recognizedTexts.prefix(6).map { "\"\($0.text)\"" }
+            onDeviceHints.append("Visible text detected on-device: \(topTexts.joined(separator: ", "))")
+        }
+        if let topClass = cameraManager.latestResult.topClassification {
+            onDeviceHints.append("Visual category: \(topClass.identifier)")
+        }
+        let prompt = MultimodalService.buildDefaultAnalysisPrompt(onDeviceHints: onDeviceHints)
+        
         Task {
             let result = await multimodalService.analyzeImage(
                 jpegData: jpegData,
-                prompt: MultimodalService.defaultPrompt,
+                prompt: prompt,
                 apiKey: MultimodalConfig.apiKey
             )
             
@@ -508,7 +518,21 @@ struct CameraView: View {
         
         let requestStartTime = Date()
         let previousContext = self.currentAIAnswer.map { "\($0.primaryHeadline): \($0.detailedDescription ?? "")" }
-        let prompt = MultimodalService.buildVoiceQuestionPrompt(userQuestion: question, previousContext: previousContext)
+        
+        var onDeviceHints: [String] = []
+        if !cameraManager.latestResult.recognizedTexts.isEmpty {
+            let topTexts = cameraManager.latestResult.recognizedTexts.prefix(6).map { "\"\($0.text)\"" }
+            onDeviceHints.append("Visible text detected on-device: \(topTexts.joined(separator: ", "))")
+        }
+        if let topClass = cameraManager.latestResult.topClassification {
+            onDeviceHints.append("Visual category: \(topClass.identifier)")
+        }
+        
+        let prompt = MultimodalService.buildVoiceQuestionPrompt(
+            userQuestion: question,
+            previousContext: previousContext,
+            onDeviceHints: onDeviceHints
+        )
         
         print("[\(triggerType.uppercased())] Sending Gemini query for: \"\(question)\" (\(jpegData.count) bytes)...")
         

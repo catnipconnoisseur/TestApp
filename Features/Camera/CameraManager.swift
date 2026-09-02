@@ -150,10 +150,10 @@ final class CameraManager: NSObject {
         }
     }
     
-    // MARK: - On-Demand Still Frame Capture (T004 / T005 High-Speed Optimization)
+    // MARK: - On-Demand Still Frame Capture (Optimized for High-Resolution Text & Currency Details)
     
-    /// Captures the most recent camera frame, downscaling to max 1024px for high-speed network transmission and AI reasoning.
-    func captureCurrentFrameJPEG(maxDimension: CGFloat = 1024.0, compressionQuality: CGFloat = 0.60) -> Data? {
+    /// Captures the most recent camera frame at crisp resolution (max 1280px, 75% quality) preserving fine text, denomination numerals, and micro-textures.
+    func captureCurrentFrameJPEG(maxDimension: CGFloat = 1280.0, compressionQuality: CGFloat = 0.75) -> Data? {
         bufferLock.lock()
         guard let pixelBuffer = latestPixelBuffer else {
             bufferLock.unlock()
