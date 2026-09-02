@@ -387,7 +387,7 @@ final class InterpretationService: @unchecked Sendable {
             } else {
                 return InterpretationResult(
                     primaryHeadline: isIndonesian ? "Uang Kertas (Pecahan Belum Jelas)" : "Currency / Banknote (Denomination Unclear)",
-                    detailedDescription: isIndonesian ? "Terdeteksi kertas uang. Tahan mikrofon untuk tanya detail AI." : "Identified as currency paper. Tap Analyze for AI visual details.",
+                    detailedDescription: isIndonesian ? "Terdeteksi kertas uang. Tahan bagian bawah layar untuk bertanya." : "Identified as currency paper. Touch and hold the bottom of the screen to ask.",
                     confidence: .moderate,
                     cautionaryNote: isIndonesian ? "Teks nominal belum terlihat jelas." : "Denomination text not yet visible in frame.",
                     contributingSources: [.onDeviceVision],
@@ -430,7 +430,7 @@ final class InterpretationService: @unchecked Sendable {
             let formattedTitle = formatTaxonomyTitle(vision)
             return InterpretationResult(
                 primaryHeadline: formattedTitle,
-                detailedDescription: isIndonesian ? "Kategori umum terdeteksi di perangkat. Tahan mikrofon untuk detail AI." : "Broad category detected on-device. Tap Analyze for AI visual details.",
+                detailedDescription: isIndonesian ? "Kategori umum terdeteksi di perangkat. Tahan bagian bawah layar untuk bertanya." : "Broad category detected on-device. Touch and hold the bottom of the screen to ask.",
                 confidence: .moderate,
                 cautionaryNote: nil,
                 contributingSources: [.onDeviceVision],
