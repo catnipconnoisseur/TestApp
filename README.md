@@ -26,7 +26,7 @@ POINT CAMERA → TOUCH & HOLD TO ASK → REASONING & EVIDENCE FUSION → CONCISE
 
 ---
 
-## 🔑 Key Features & Current Capabilities
+## 🔑 Key Features & Capabilities
 
 * **Onboarding & Spatial Interaction Anchor:**
   * 3-step accessible onboarding (`WelcomeView`) establishing a consistent **Bottom Interaction Zone** matching the live camera experience.
@@ -85,37 +85,24 @@ TestApp/
 │   └── Settings/
 │       └── SettingsView.swift                 # Locale selection & developer diagnostics
 │
-├── Tickets/                                   # Development milestones & research records
-│   ├── ROADMAP.md
-│   ├── T001-Baseline.md
-│   ├── T002-Camera.md
-│   ├── T003-Vision.md
-│   ├── T004-Multimodal.md
-│   ├── T005-Interpretation.md
-│   ├── T006-Reliability.md
-│   ├── T007-Conversational-Multimodal.md
-│   └── T008-Accessibility-Experience.md
-│
 ├── AGENTS.md                                  # Persistent context & AI engineering guidelines
 └── README.md
 ```
 
 ---
 
-## 📋 Development Roadmap & Status
+## 📋 Development Milestones & Status
 
-Development progresses incrementally across focused milestones. Full specifications are documented in [`Tickets/ROADMAP.md`](Tickets/ROADMAP.md).
-
-- [x] **T001: Baseline App Structure** (`Complete`)
-- [x] **T002: Live Camera Preview & AVFoundation Session** (`Complete`)
-- [x] **T003: Vision Classification & Text Recognition Baseline** (`Complete`)
-- [x] **T004: Multimodal Understanding Baseline (Gemini 2.5 Flash)** (`Complete`)
-- [x] **T005: Interpretation & Decision Layer (Multi-Signal Fusion)** (`Complete`)
-- [x] **T006: Reliability & Real-World Evaluation** (`Complete`)
-- [x] **T007: Conversational Multimodal Interaction & Voice Queries** (`Complete`)
-- [x] **T008: Accessibility Experience, VoiceOver Audit & Banknote Robustness** (`Complete`)
-- [ ] **T009: Conversational Memory & Spatial Context Refinement** (`Planned`)
-- [ ] **T010: Create ML Feasibility & Evaluation** (`Planned`)
+- [x] **Baseline App Structure & Lifecycle** (`Complete`)
+- [x] **Live Camera Preview & AVFoundation Session** (`Complete`)
+- [x] **Vision Classification & Text Recognition Baseline** (`Complete`)
+- [x] **Multimodal Understanding Baseline (Gemini 2.5 Flash)** (`Complete`)
+- [x] **Interpretation & Decision Layer (Multi-Signal Fusion)** (`Complete`)
+- [x] **Reliability & Real-World Evaluation** (`Complete`)
+- [x] **Conversational Multimodal Interaction & Voice Queries** (`Complete`)
+- [x] **Accessibility Experience, VoiceOver Audit & Banknote Robustness** (`Complete`)
+- [ ] **Conversational Memory & Spatial Context Refinement** (`Planned`)
+- [ ] **Create ML Feasibility & Evaluation** (`Planned`)
 
 ---
 
