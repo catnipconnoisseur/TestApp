@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 
 // MARK: - Onboarding Step
@@ -21,8 +22,9 @@ private enum TutorialState: Equatable {
 
 // MARK: - WelcomeView (Interactive 3-Screen Onboarding)
 
-/// First-launch onboarding that teaches the core interaction through experience.
-/// Screen 1: What the app is. Screen 2: Practice hold-to-speak. Screen 3: Go.
+/// Accessible, polished first-launch onboarding following Design Principles B + C:
+/// - B: Contextual Primary Action (Permissions -> Voice Area -> Get Started)
+/// - C: Consistent Bottom Interaction Zone (Spatial anchor matching CameraView)
 struct WelcomeView: View {
     
     @Binding var hasCompletedOnboarding: Bool
@@ -39,9 +41,14 @@ struct WelcomeView: View {
             Color(.systemBackground).ignoresSafeArea()
             
             VStack(spacing: 0) {
+                // Top Navigation Bar (Progress Dots & Contextual Secondary Action)
+                topNavigationBar
+                    .padding(.top, 16)
+                    .padding(.horizontal, 24)
+                
                 Spacer()
                 
-                // Current screen content
+                // Screen Content Area
                 Group {
                     switch currentStep {
                     case .introduction:
@@ -60,164 +67,485 @@ struct WelcomeView: View {
                 
                 Spacer()
                 
-                // Bottom: progress dots + action button
-                VStack(spacing: 20) {
-                    progressDots
-                    bottomAction
-                }
-                .padding(.bottom, 48)
+                // Bottom Interaction Zone (Consistent Spatial Anchor across all screens)
+                bottomInteractionZone
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 24)
+            }
+        }
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                AccessibilityVoiceService.shared.speak(
+                    "Welcome to TestApp, your visual assistant. TestApp uses your camera and microphone to describe what is around you. Tap the Set Up Permissions button at the bottom of the screen to get started."
+                )
             }
         }
         .onDisappear {
             speechService.cancelRecording()
+            AccessibilityVoiceService.shared.stopSpeaking()
         }
     }
     
-    // MARK: - Screen 1: Introduction
+    // MARK: - Top Navigation Bar
     
-    private var introductionContent: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "eye.circle.fill")
-                .font(.system(size: 64, weight: .thin))
-                .foregroundStyle(.blue)
+    private var topNavigationBar: some View {
+        HStack {
+            // Balance spacer on the left
+            Color.clear
+                .frame(width: 60, height: 32)
                 .accessibilityHidden(true)
             
-            Text("Meet your visual assistant")
-                .font(.largeTitle)
-                .fontWeight(.bold)
-                .multilineTextAlignment(.center)
-                .accessibilityAddTraits(.isHeader)
+            Spacer()
             
-            Text("Ask questions about what your camera sees.")
-                .font(.title3)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+            // Progress Indicator (Step X of 3)
+            progressDots
+            
+            Spacer()
+            
+            // Contextual Secondary Action (Skip Practice on Screen 2)
+            if currentStep == .voiceTutorial {
+                Button {
+                    skipPractice()
+                } label: {
+                    Text("Skip")
+                        .font(.body)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(
+                            Capsule()
+                                .fill(Color(.secondarySystemBackground))
+                        )
+                }
+                .frame(width: 60, height: 32, alignment: .trailing)
+                .accessibilityLabel("Skip voice practice")
+                .accessibilityHint("Advances directly to the final step.")
+            } else {
+                Color.clear
+                    .frame(width: 60, height: 32)
+                    .accessibilityHidden(true)
+            }
         }
-        .padding(.horizontal, 32)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Meet your visual assistant. Ask questions about what your camera sees.")
     }
     
-    // MARK: - Screen 2: Interactive Voice Tutorial
+    private var progressDots: some View {
+        HStack(spacing: 8) {
+            ForEach(OnboardingStep.allCases, id: \.rawValue) { step in
+                Circle()
+                    .fill(step == currentStep ? Color.blue : Color(.systemGray4))
+                    .frame(width: 8, height: 8)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Step \(currentStep.rawValue + 1) of \(OnboardingStep.allCases.count)")
+        .animation(.easeInOut(duration: 0.25), value: currentStep)
+    }
+    
+    // MARK: - Screen 1: Introduction Content
+    
+    private var introductionContent: some View {
+        VStack(spacing: 24) {
+            ZStack {
+                Circle()
+                    .fill(Color.blue.opacity(0.12))
+                    .frame(width: 96, height: 96)
+                
+                Image(systemName: "eye.circle.fill")
+                    .font(.system(size: 56, weight: .regular))
+                    .foregroundStyle(.blue)
+            }
+            .accessibilityHidden(true)
+            
+            VStack(spacing: 10) {
+                Text("Meet your visual assistant")
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                    .multilineTextAlignment(.center)
+                    .accessibilityAddTraits(.isHeader)
+                
+                Text("Point your camera at anything around you and ask questions to get clear spoken answers.")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 8)
+            }
+            
+            // Feature Highlights
+            VStack(alignment: .leading, spacing: 14) {
+                featureRow(icon: "camera.fill", title: "Visual Understanding", description: "Describes objects, text, and details in your surroundings.")
+                featureRow(icon: "waveform", title: "Natural Voice", description: "Hold the bottom of the screen to ask questions in your own words.")
+            }
+            .padding(.top, 6)
+            .padding(.horizontal, 8)
+        }
+        .padding(.horizontal, 24)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Welcome to TestApp, your visual assistant. TestApp uses your camera and microphone to describe what is around you. Point your camera at anything around you and ask questions to get clear spoken answers. Tap the Set Up Permissions button at the bottom of the screen to get started.")
+    }
+    
+    private func featureRow(icon: String, title: String, description: String) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundStyle(.blue)
+                .frame(width: 28, alignment: .center)
+                .padding(.top, 2)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                
+                Text(description)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+    
+    // MARK: - Screen 2: Interactive Voice Tutorial Content
     
     private var voiceTutorialContent: some View {
-        VStack(spacing: 0) {
-            // Heading
-            VStack(spacing: 12) {
+        VStack(spacing: 18) {
+            // Heading & instructions
+            VStack(spacing: 10) {
                 Text("Try asking a question")
                     .font(.title)
                     .fontWeight(.bold)
                     .multilineTextAlignment(.center)
                     .accessibilityAddTraits(.isHeader)
                 
-                if tutorialState == .idle || tutorialState == .empty {
-                    VStack(spacing: 4) {
-                        Text("Hold below and ask:")
-                            .font(.body)
-                            .foregroundStyle(.secondary)
-                        
-                        Text("\"What is this?\"")
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.blue)
-                            .italic()
-                    }
-                }
+                Text("Touch and hold the microphone at the bottom of the screen while speaking, then release when finished.")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 8)
             }
-            .padding(.horizontal, 32)
+            
+            // Feedback Card or Suggested Prompt
+            if case .success(let transcript) = tutorialState {
+                successFeedbackCard(transcript: transcript)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            } else if tutorialState == .empty {
+                emptyFeedbackCard
+                    .transition(.opacity)
+            } else if tutorialState == .unavailable {
+                unavailableFeedbackCard
+                    .transition(.opacity)
+            } else {
+                suggestedPromptCard
+                    .transition(.opacity)
+            }
+        }
+        .padding(.horizontal, 24)
+    }
+    
+    private var suggestedPromptCard: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "lightbulb.fill")
+                    .font(.subheadline)
+                    .foregroundStyle(.blue)
+                
+                Text("Try saying:")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.secondary)
+            }
+            
+            Text("\"What is this?\"")
+                .font(.title2)
+                .fontWeight(.bold)
+                .foregroundStyle(.blue)
+            
+            Text("or ask about anything nearby")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, 18)
+        .padding(.horizontal, 20)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(.secondarySystemBackground))
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Suggested question: What is this? Touch and hold the microphone at the bottom of the screen to ask.")
+    }
+    
+    private func successFeedbackCard(transcript: String) -> some View {
+        VStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(Color.green.opacity(0.12))
+                    .frame(width: 48, height: 48)
+                
+                Image(systemName: "checkmark")
+                    .font(.title3.bold())
+                    .foregroundStyle(.green)
+            }
+            
+            VStack(spacing: 4) {
+                Text("You asked:")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                
+                Text("\"\(transcript)\"")
+                    .font(.headline)
+                    .fontWeight(.bold)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+            }
+            
+            Text("That is how you ask TestApp questions. In the live camera, you'll receive a spoken answer instantly.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.top, 2)
+        }
+        .padding(.vertical, 16)
+        .padding(.horizontal, 20)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(.secondarySystemBackground))
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Practice successful. You asked: \(transcript). Tap Continue at the bottom of the screen to finish setup.")
+    }
+    
+    private var emptyFeedbackCard: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "mic.slash")
+                .font(.title2)
+                .foregroundStyle(.orange)
+            
+            Text("I didn't hear a question.")
+                .font(.headline)
+                .fontWeight(.semibold)
+            
+            Text("Hold the microphone at the bottom and speak clearly, or tap Skip at the top.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.vertical, 16)
+        .padding(.horizontal, 20)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(.secondarySystemBackground))
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("I didn't hear a question. Hold the microphone at the bottom of the screen to try again, or tap Skip in the top right.")
+    }
+    
+    private var unavailableFeedbackCard: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "mic.slash.fill")
+                .font(.title2)
+                .foregroundStyle(.secondary)
+            
+            Text("Microphone access is needed")
+                .font(.headline)
+                .fontWeight(.semibold)
+            
+            Text("You can enable microphone permission in iOS Settings to ask questions.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.vertical, 16)
+        .padding(.horizontal, 20)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(.secondarySystemBackground))
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Microphone access is needed. You can enable microphone permission in iOS Settings.")
+    }
+    
+    // MARK: - Screen 3: Ready Content
+    
+    private var readyContent: some View {
+        VStack(spacing: 24) {
+            ZStack {
+                Circle()
+                    .fill(Color.green.opacity(0.12))
+                    .frame(width: 96, height: 96)
+                
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 56, weight: .regular))
+                    .foregroundStyle(.green)
+            }
+            .accessibilityHidden(true)
+            
+            VStack(spacing: 10) {
+                Text("You're ready")
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                    .multilineTextAlignment(.center)
+                    .accessibilityAddTraits(.isHeader)
+                
+                Text("Point your camera at anything and hold the bottom area to ask questions such as:")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 8)
+            }
+            
+            // Example question cards
+            VStack(spacing: 10) {
+                exampleCard(icon: "questionmark.circle.fill", text: "\"What is this?\"")
+                exampleCard(icon: "info.circle.fill", text: "\"What is it used for?\"")
+                exampleCard(icon: "doc.text.viewfinder", text: "\"What does this label say?\"")
+            }
+            .padding(.horizontal, 8)
+        }
+        .padding(.horizontal, 24)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("You are ready. Point your camera at anything and hold the bottom of the screen to ask what you would like to know. For example: What is this? What is it used for? Or: What does this label say? Tap the Get Started button at the bottom of the screen to open the live camera.")
+    }
+    
+    private func exampleCard(icon: String, text: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundStyle(.blue)
+            
+            Text(text)
+                .font(.body)
+                .fontWeight(.medium)
+                .foregroundStyle(.primary)
             
             Spacer()
-                .frame(minHeight: 24, maxHeight: 40)
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Color(.secondarySystemBackground))
+        )
+    }
+    
+    // MARK: - Bottom Interaction Zone (Spatial Consistency with CameraView)
+    
+    @ViewBuilder
+    private var bottomInteractionZone: some View {
+        switch currentStep {
+        case .introduction:
+            // Screen 1: Set Up Permissions Button
+            Button {
+                advanceStep()
+            } label: {
+                Text("Set Up Permissions")
+                    .font(.title3)
+                    .fontWeight(.bold)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .accessibilityLabel("Set Up Permissions")
+            .accessibilityHint("Requests camera and microphone permissions, then proceeds to practice asking a question.")
             
-            // Result area (after success or empty)
-            if case .success(let transcript) = tutorialState {
-                successFeedback(transcript: transcript)
-                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                    .padding(.horizontal, 32)
-                
-                Spacer()
-                    .frame(minHeight: 16, maxHeight: 24)
+        case .voiceTutorial:
+            // Screen 2: Contextual Bottom Interaction
+            if case .success = tutorialState {
+                // When practice has been completed: Prominent Continue button in bottom zone
+                Button {
+                    advanceStep()
+                } label: {
+                    Text("Continue")
+                        .font(.title3)
+                        .fontWeight(.bold)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 56)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .accessibilityLabel("Continue")
+                .accessibilityHint("Advances to the final step.")
+            } else {
+                // Primary interaction: Voice Area (Exact match with CameraView's bottom voice area)
+                onboardingVoiceArea
             }
             
-            if tutorialState == .empty {
-                emptyFeedback
-                    .transition(.opacity)
-                    .padding(.horizontal, 32)
-                
-                Spacer()
-                    .frame(minHeight: 16, maxHeight: 24)
+        case .ready:
+            // Screen 3: Get Started Button
+            Button {
+                advanceStep()
+            } label: {
+                Text("Get Started")
+                    .font(.title3)
+                    .fontWeight(.bold)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
             }
-            
-            if tutorialState == .unavailable {
-                unavailableFeedback
-                    .transition(.opacity)
-                    .padding(.horizontal, 32)
-                
-                Spacer()
-                    .frame(minHeight: 16, maxHeight: 24)
-            }
-            
-            // Interactive voice area (when not showing success)
-            if tutorialState != .unavailable {
-                tutorialVoiceArea
-                    .padding(.horizontal, 24)
-            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .accessibilityLabel("Get Started")
+            .accessibilityHint("Completes onboarding and opens the live camera viewfinder.")
         }
     }
     
-    // MARK: - Tutorial Voice Area (Large, Interactive)
+    // MARK: - Onboarding Voice Area (120pt Bottom Card matching CameraView)
     
-    private var tutorialVoiceArea: some View {
+    private var onboardingVoiceArea: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 20)
-                .fill(tutorialAreaBackground)
+                .fill(voiceAreaBackgroundColor)
                 .overlay(
                     RoundedRectangle(cornerRadius: 20)
-                        .stroke(tutorialAreaBorder, lineWidth: 1.5)
+                        .stroke(voiceAreaBorderColor, lineWidth: 1.5)
                 )
             
-            VStack(spacing: 10) {
-                // State icon
+            VStack(spacing: 8) {
+                // State-dependent icon
                 Group {
                     switch tutorialState {
                     case .listening:
                         Image(systemName: "waveform")
-                            .font(.system(size: 32, weight: .medium))
+                            .font(.system(size: 28, weight: .medium))
                             .foregroundStyle(.white)
                             .symbolEffect(.variableColor.iterative, isActive: true)
                     case .processing:
                         ProgressView()
-                            .scaleEffect(1.3)
+                            .scaleEffect(1.2)
                             .tint(.white)
-                    case .success:
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 32, weight: .medium))
-                            .foregroundStyle(.white)
                     default:
                         Image(systemName: "mic.fill")
-                            .font(.system(size: 32, weight: .medium))
+                            .font(.system(size: 28, weight: .medium))
                             .foregroundStyle(.white.opacity(0.9))
                     }
                 }
-                .frame(height: 36)
+                .frame(height: 32)
                 
-                // State label
-                Text(tutorialAreaLabel)
-                    .font(.headline)
-                    .foregroundStyle(.white)
+                // State-dependent label
+                Text(voiceAreaLabel)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.white.opacity(0.9))
                 
-                // Partial transcript while listening
+                // Partial transcript while listening or hint text when idle
                 if tutorialState == .listening, !speechService.partialTranscript.isEmpty {
                     Text("\"\(speechService.partialTranscript)\"")
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.75))
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.85))
                         .lineLimit(1)
-                        .transition(.opacity)
+                } else if tutorialState == .idle || tutorialState == .empty {
+                    Text("\"What is this?\"")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.5))
+                        .italic()
                 }
             }
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 130)
+        .frame(height: 120)
+        .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in
@@ -234,11 +562,11 @@ struct WelcomeView: View {
         )
         .disabled(tutorialState == .processing)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(tutorialAreaAccessibilityLabel)
-        .accessibilityHint(tutorialAreaAccessibilityHint)
+        .accessibilityLabel(voiceAreaAccessibilityLabel)
+        .accessibilityHint(voiceAreaAccessibilityHint)
         .accessibilityAddTraits(.isButton)
         .accessibilityAction(.default) {
-            // VoiceOver double-tap toggles recording
+            // VoiceOver double-tap toggle
             if isHolding || tutorialState == .listening {
                 isHolding = false
                 endTutorialSpeech()
@@ -247,6 +575,102 @@ struct WelcomeView: View {
                 beginTutorialSpeech()
             }
         }
+    }
+    
+    // MARK: - Voice Area Styling (100% Consistent with CameraView)
+    
+    private var voiceAreaBackgroundColor: Color {
+        switch tutorialState {
+        case .listening:
+            return Color.red.opacity(0.75)
+        case .processing:
+            return Color.blue.opacity(0.6)
+        default:
+            return Color.black.opacity(0.65)
+        }
+    }
+    
+    private var voiceAreaBorderColor: Color {
+        switch tutorialState {
+        case .listening:
+            return Color.red.opacity(0.9)
+        case .processing:
+            return Color.blue.opacity(0.7)
+        default:
+            return Color.white.opacity(0.2)
+        }
+    }
+    
+    private var voiceAreaLabel: String {
+        switch tutorialState {
+        case .idle, .empty:
+            return "Hold and ask a question"
+        case .listening:
+            return "Listening…"
+        case .processing:
+            return "Thinking…"
+        case .success:
+            return "Done"
+        case .unavailable:
+            return "Microphone unavailable"
+        }
+    }
+    
+    private var voiceAreaAccessibilityLabel: String {
+        switch tutorialState {
+        case .listening:
+            return "Recording question"
+        case .processing:
+            return "Processing question"
+        case .success(let t):
+            return "Practice complete. You said: \(t)."
+        case .empty:
+            return "Try asking again"
+        case .unavailable:
+            return "Voice practice unavailable"
+        case .idle:
+            return "Practice asking a question"
+        }
+    }
+    
+    private var voiceAreaAccessibilityHint: String {
+        switch tutorialState {
+        case .listening:
+            return "Double-tap to stop recording, or release hold."
+        case .processing:
+            return "Please wait while your question is analyzed."
+        case .success:
+            return "Double-tap to practice asking again, or tap Continue below."
+        case .idle, .empty:
+            return "Double-tap to start speaking, or press and hold the bottom of the screen while speaking."
+        case .unavailable:
+            return "Tap Skip in the top right to continue."
+        }
+    }
+    
+    // MARK: - Proactive Permissions Setup
+    
+    private func requestAllPermissions() async -> Bool {
+        // 1. Camera permission
+        let cameraStatus = AVCaptureDevice.authorizationStatus(for: .video)
+        let cameraGranted: Bool
+        if cameraStatus == .authorized {
+            cameraGranted = true
+        } else if cameraStatus == .notDetermined {
+            cameraGranted = await AVCaptureDevice.requestAccess(for: .video)
+        } else {
+            cameraGranted = false
+        }
+        
+        // 2. Microphone & Speech Recognition
+        let speechGranted = await speechService.requestPermissions()
+        
+        await MainActor.run {
+            self.permissionsChecked = true
+            self.hasPermissions = speechGranted
+        }
+        
+        return cameraGranted && speechGranted
     }
     
     // MARK: - Tutorial Speech Actions
@@ -258,33 +682,22 @@ struct WelcomeView: View {
             tutorialState = .listening
         }
         
-        UIAccessibility.post(notification: .announcement, argument: "Listening")
+        AccessibilityVoiceService.shared.speak("Listening.")
         
         Task {
             if !permissionsChecked {
-                let granted = await speechService.requestPermissions()
-                permissionsChecked = true
-                hasPermissions = granted
-                
-                if !granted {
-                    await MainActor.run {
-                        isHolding = false
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            tutorialState = .unavailable
-                        }
-                        UIAccessibility.post(
-                            notification: .announcement,
-                            argument: "Voice practice isn't available. Microphone or speech permission was not granted. You can skip this step."
-                        )
-                    }
-                    return
-                }
-            } else if !hasPermissions {
+                _ = await requestAllPermissions()
+            }
+            
+            guard hasPermissions else {
                 await MainActor.run {
                     isHolding = false
                     withAnimation(.easeInOut(duration: 0.2)) {
                         tutorialState = .unavailable
                     }
+                    AccessibilityVoiceService.shared.speak(
+                        "Microphone permission was not granted. Tap Skip at the top right to continue."
+                    )
                 }
                 return
             }
@@ -303,14 +716,14 @@ struct WelcomeView: View {
         }
         
         Task {
-            guard let transcript = await speechService.stopRecordingAndGetTranscript() else {
+            guard let transcript = await speechService.stopRecordingAndGetTranscript(),
+                  !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 await MainActor.run {
                     withAnimation(.easeInOut(duration: 0.2)) {
                         tutorialState = .empty
                     }
-                    UIAccessibility.post(
-                        notification: .announcement,
-                        argument: "I didn't hear anything. You can try again or continue."
+                    AccessibilityVoiceService.shared.speak(
+                        "I didn't hear a question. Hold the microphone at the bottom to try again, or tap Skip at the top right."
                     )
                 }
                 return
@@ -320,147 +733,42 @@ struct WelcomeView: View {
                 withAnimation(.easeInOut(duration: 0.25)) {
                     tutorialState = .success(transcript)
                 }
-                UIAccessibility.post(
-                    notification: .announcement,
-                    argument: "You asked: \(transcript). That's how you talk to me."
+                AccessibilityVoiceService.shared.speak(
+                    "Great job! You asked: \(transcript). Tap Continue at the bottom of the screen to finish setup."
                 )
             }
         }
     }
     
-    // MARK: - Success Feedback
+    // MARK: - Navigation Actions
     
-    private func successFeedback(transcript: String) -> some View {
-        VStack(spacing: 8) {
-            Text("You asked:")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            
-            Text("\"\(transcript)\"")
-                .font(.title3)
-                .fontWeight(.semibold)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-            
-            Text("That's how you talk to me.")
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .padding(.top, 4)
+    private func skipPractice() {
+        speechService.cancelRecording()
+        withAnimation(.easeInOut(duration: 0.35)) {
+            currentStep = .ready
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("You asked: \(transcript). That's how you talk to me.")
+        AccessibilityVoiceService.shared.speak(
+            "Step 3 of 3: You are ready! Point your camera at anything, touch and hold the bottom of the screen to ask what you would like to know, and release to hear an answer. Tap Get Started at the bottom of the screen to open the camera."
+        )
     }
-    
-    // MARK: - Empty Speech Feedback
-    
-    private var emptyFeedback: some View {
-        Text("I didn't hear anything. Try again or continue.")
-            .font(.body)
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.center)
-            .accessibilityLabel("I didn't hear anything. You can try again or continue.")
-    }
-    
-    // MARK: - Unavailable Feedback
-    
-    private var unavailableFeedback: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "mic.slash.fill")
-                .font(.system(size: 36))
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            
-            Text("Voice practice isn't available right now.")
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            
-            Text("You can set up microphone access later in Settings.")
-                .font(.subheadline)
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Voice practice isn't available right now. You can set up microphone access later in Settings.")
-    }
-    
-    // MARK: - Screen 3: Ready
-    
-    private var readyContent: some View {
-        VStack(spacing: 24) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 56, weight: .thin))
-                .foregroundStyle(.green)
-                .accessibilityHidden(true)
-            
-            VStack(spacing: 14) {
-                Text("You're ready")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                    .accessibilityAddTraits(.isHeader)
-                
-                Text("Point your camera at something and ask what you'd like to know.")
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            
-            // Example questions
-            VStack(spacing: 8) {
-                exampleQuestion("\"What is this?\"")
-                exampleQuestion("\"What is it used for?\"")
-                exampleQuestion("\"What does this label say?\"")
-            }
-            .padding(.top, 4)
-        }
-        .padding(.horizontal, 32)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("You're ready. Point your camera at something and ask what you'd like to know. For example: What is this? What is it used for? What does this label say?")
-    }
-    
-    private func exampleQuestion(_ text: String) -> some View {
-        Text(text)
-            .font(.body)
-            .italic()
-            .foregroundStyle(.blue.opacity(0.7))
-    }
-    
-    // MARK: - Progress Dots
-    
-    private var progressDots: some View {
-        HStack(spacing: 8) {
-            ForEach(OnboardingStep.allCases, id: \.rawValue) { step in
-                Circle()
-                    .fill(step == currentStep ? Color.blue : Color(.systemGray4))
-                    .frame(width: 8, height: 8)
-            }
-        }
-        .accessibilityHidden(true)
-        .animation(.easeInOut(duration: 0.25), value: currentStep)
-    }
-    
-    // MARK: - Bottom Action Button
-    
-    private var bottomAction: some View {
-        Button {
-            advanceStep()
-        } label: {
-            Text(bottomActionLabel)
-                .font(.title3)
-                .fontWeight(.semibold)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-        }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.large)
-        .padding(.horizontal, 32)
-        .accessibilityLabel(bottomActionAccessibilityLabel)
-        .accessibilityHint(bottomActionAccessibilityHint)
-    }
-    
-    // MARK: - Navigation Logic
     
     private func advanceStep() {
+        if currentStep == .introduction {
+            Task {
+                AccessibilityVoiceService.shared.speak("Setting up camera and microphone access. Please allow permissions when prompted.")
+                _ = await requestAllPermissions()
+                await MainActor.run {
+                    withAnimation(.easeInOut(duration: 0.35)) {
+                        currentStep = .voiceTutorial
+                    }
+                    AccessibilityVoiceService.shared.speak(
+                        "Step 2 of 3: Try asking a question. Touch and hold the microphone at the bottom of the screen while speaking, then release when finished. For example, ask: What is this? Or tap Skip in the top right to continue."
+                    )
+                }
+            }
+            return
+        }
+        
         // Clean up speech if leaving tutorial
         if currentStep == .voiceTutorial {
             speechService.cancelRecording()
@@ -469,122 +777,15 @@ struct WelcomeView: View {
         withAnimation(.easeInOut(duration: 0.35)) {
             switch currentStep {
             case .introduction:
-                currentStep = .voiceTutorial
+                break
             case .voiceTutorial:
                 currentStep = .ready
+                AccessibilityVoiceService.shared.speak(
+                    "Step 3 of 3: You are ready! Point your camera at anything, touch and hold the bottom of the screen to ask what you would like to know, and release to hear an answer. Tap Get Started at the bottom of the screen to open the camera."
+                )
             case .ready:
                 hasCompletedOnboarding = true
             }
-        }
-    }
-    
-    // MARK: - Computed Labels
-    
-    private var bottomActionLabel: String {
-        switch currentStep {
-        case .introduction:
-            return "Continue"
-        case .voiceTutorial:
-            switch tutorialState {
-            case .success:
-                return "Continue"
-            case .unavailable:
-                return "Continue without practicing"
-            default:
-                return "Skip"
-            }
-        case .ready:
-            return "Get Started"
-        }
-    }
-    
-    private var bottomActionAccessibilityLabel: String {
-        switch currentStep {
-        case .introduction:
-            return "Continue"
-        case .voiceTutorial:
-            if case .success = tutorialState {
-                return "Continue"
-            } else if tutorialState == .unavailable {
-                return "Continue without practicing"
-            }
-            return "Skip voice tutorial"
-        case .ready:
-            return "Get Started"
-        }
-    }
-    
-    private var bottomActionAccessibilityHint: String {
-        switch currentStep {
-        case .ready:
-            return "Opens the camera."
-        default:
-            return ""
-        }
-    }
-    
-    // MARK: - Tutorial Voice Area Styling
-    
-    private var tutorialAreaBackground: Color {
-        switch tutorialState {
-        case .listening:
-            return Color.red.opacity(0.75)
-        case .processing:
-            return Color.blue.opacity(0.6)
-        case .success:
-            return Color.green.opacity(0.6)
-        default:
-            return Color(.systemGray2)
-        }
-    }
-    
-    private var tutorialAreaBorder: Color {
-        switch tutorialState {
-        case .listening:
-            return Color.red.opacity(0.9)
-        case .success:
-            return Color.green.opacity(0.7)
-        default:
-            return Color.clear
-        }
-    }
-    
-    private var tutorialAreaLabel: String {
-        switch tutorialState {
-        case .idle, .empty:
-            return "Hold and speak"
-        case .listening:
-            return "Listening…"
-        case .processing:
-            return "Processing…"
-        case .success:
-            return "Done"
-        case .unavailable:
-            return ""
-        }
-    }
-    
-    private var tutorialAreaAccessibilityLabel: String {
-        switch tutorialState {
-        case .listening:
-            return "Listening to your question. Double-tap to stop."
-        case .processing:
-            return "Processing your speech."
-        case .success(let t):
-            return "You said: \(t). You can try again or continue."
-        case .empty:
-            return "I didn't hear anything. Hold and speak to try again."
-        default:
-            return "Hold and speak to try asking a question."
-        }
-    }
-    
-    private var tutorialAreaAccessibilityHint: String {
-        switch tutorialState {
-        case .idle, .empty, .success:
-            return "Double-tap to start speaking, then double-tap again to stop."
-        default:
-            return ""
         }
     }
 }

@@ -33,7 +33,7 @@ struct CameraPreviewRepresentable: UIViewRepresentable {
 // MARK: - Interaction State
 
 /// Describes the user-facing state of the voice interaction area.
-private enum InteractionState {
+private enum InteractionState: Equatable {
     case idle
     case listening
     case thinking
@@ -104,6 +104,12 @@ struct CameraView: View {
     @State private var testQuestionInput: String = ""
     // END TEMPORARY T007.2 TEST INPUT
     
+    // Camera arrival announcement tracker
+    @State private var hasAnnouncedCameraArrival = false
+    
+    // Thinking State Haptic Task
+    @State private var thinkingHapticTask: Task<Void, Never>? = nil
+    
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
@@ -128,10 +134,18 @@ struct CameraView: View {
         }
         .onAppear {
             cameraManager.requestAccessAndSetup()
+            if !hasAnnouncedCameraArrival {
+                hasAnnouncedCameraArrival = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    AccessibilityVoiceService.shared.speak("Camera ready. Touch and hold the bottom of the screen to ask a question.")
+                }
+            }
         }
         .onDisappear {
             cameraManager.stopSession()
             speechService.cancelRecording()
+            stopThinkingHaptics()
+            AccessibilityVoiceService.shared.stopSpeaking()
             resetSessionState()
         }
         .sheet(isPresented: $showSettingsSheet) {
@@ -150,11 +164,10 @@ struct CameraView: View {
     
     private var cameraReadyView: some View {
         ZStack {
-            // Full-screen camera preview
+            // Full-screen camera preview (hidden from VoiceOver to prevent background layer occlusion)
             CameraPreviewRepresentable(session: cameraManager.captureSession)
                 .ignoresSafeArea()
-                .accessibilityLabel("Live camera viewfinder")
-                .accessibilityHint("Point camera at objects to see them. Use the voice area below to ask questions.")
+                .accessibilityHidden(true)
             
             // Content overlay
             VStack(spacing: 0) {
@@ -162,8 +175,9 @@ struct CameraView: View {
                 // Top Bar: Settings only
                 topBar
                 
-                // TEMPORARY T007.2 TEST INPUT — REMOVE AFTER TESTING
+                // TEMPORARY T007.2 TEST INPUT — REMOVE AFTER TESTING (Hidden from VoiceOver)
                 temporaryTestingInputBar
+                    .accessibilityHidden(true)
                 // END TEMPORARY T007.2 TEST INPUT
                 
                 Spacer()
@@ -327,6 +341,7 @@ struct CameraView: View {
         lastTriggerType = "Manual"
         lastRequestTimestamp = Date()
         let requestStartTime = Date()
+        startThinkingHaptics()
         
         // Snapshot the reference scene at the moment of capture
         let snapshotReference = AnalyzedSceneReference(
@@ -336,7 +351,7 @@ struct CameraView: View {
             analyzedAt: requestStartTime
         )
         
-        UIAccessibility.post(notification: .announcement, argument: "Analyzing image")
+        AccessibilityVoiceService.shared.speak("Analyzing image.")
         
         Task {
             let result = await multimodalService.analyzeImage(
@@ -347,6 +362,7 @@ struct CameraView: View {
             
             await MainActor.run {
                 self.isRequestInFlight = false
+                self.stopThinkingHaptics()
                 self.lastMultimodalStatus = result.status
                 self.lastGeminiLatencyMs = result.latencyMs
                 self.lastPerceivedTurnaroundMs = Date().timeIntervalSince(requestStartTime) * 1000.0
@@ -354,6 +370,7 @@ struct CameraView: View {
                 
                 if result.status == .success && !result.text.isEmpty {
                     print("[USER] Gemini SUCCESS (\(Int(result.latencyMs))ms) - Response length: \(result.text.count)")
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
                     
                     let synthesized = self.interpretationService.interpret(
                         recognition: self.cameraManager.latestResult,
@@ -366,7 +383,7 @@ struct CameraView: View {
                         self.interactionState = .answered
                     }
                     
-                    UIAccessibility.post(notification: .announcement, argument: "\(synthesized.primaryHeadline). \(synthesized.detailedDescription ?? "")")
+                    AccessibilityVoiceService.shared.speak("\(synthesized.primaryHeadline). \(synthesized.detailedDescription ?? "")")
                 } else {
                     handleGeminiFailure(result: result, sceneRef: snapshotReference)
                 }
@@ -400,7 +417,7 @@ struct CameraView: View {
             interactionState = .listening
         }
         
-        UIAccessibility.post(notification: .announcement, argument: "Listening.")
+        AccessibilityVoiceService.shared.speak("Listening.")
         
         Task {
             let granted = await speechService.requestPermissions()
@@ -450,7 +467,7 @@ struct CameraView: View {
             self.pendingVoiceReference = nil
             self.interactionState = .idle
             self.lastSpokenQuestion = "I didn't hear a question. Hold and ask again."
-            UIAccessibility.post(notification: .announcement, argument: "I didn't hear a question. Hold and ask again.")
+            AccessibilityVoiceService.shared.speak("I didn't hear a question. Hold and ask again.")
             return
         }
         
@@ -485,8 +502,9 @@ struct CameraView: View {
         self.lastTriggerType = triggerType
         self.lastRequestTimestamp = Date()
         self.interactionState = .thinking
+        startThinkingHaptics()
         
-        UIAccessibility.post(notification: .announcement, argument: "Analyzing your question.")
+        AccessibilityVoiceService.shared.speak("Analyzing your question.")
         
         let requestStartTime = Date()
         let previousContext = self.currentAIAnswer.map { "\($0.primaryHeadline): \($0.detailedDescription ?? "")" }
@@ -506,6 +524,7 @@ struct CameraView: View {
                 self.isProcessingVoiceQuery = false
                 self.pendingVoiceSnapshot = nil
                 self.pendingVoiceReference = nil
+                self.stopThinkingHaptics()
                 
                 self.lastMultimodalStatus = result.status
                 self.lastGeminiLatencyMs = result.latencyMs
@@ -514,6 +533,7 @@ struct CameraView: View {
                 
                 if result.status == .success && !result.text.isEmpty {
                     print("[\(triggerType.uppercased())] Gemini SUCCESS (\(Int(result.latencyMs))ms) - Response length: \(result.text.count)")
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
                     
                     let synthesized = self.interpretationService.interpret(
                         recognition: self.cameraManager.latestResult,
@@ -526,7 +546,7 @@ struct CameraView: View {
                         self.interactionState = .answered
                     }
                     
-                    UIAccessibility.post(notification: .announcement, argument: "\(synthesized.primaryHeadline). \(synthesized.detailedDescription ?? "")")
+                    AccessibilityVoiceService.shared.speak("\(synthesized.primaryHeadline). \(synthesized.detailedDescription ?? "")")
                 } else {
                     handleGeminiFailure(result: result, sceneRef: sceneRef)
                 }
@@ -537,6 +557,9 @@ struct CameraView: View {
     // MARK: - Gemini Failure Handler (Shared)
     
     private func handleGeminiFailure(result: MultimodalService.MultimodalResult, sceneRef: AnalyzedSceneReference) {
+        stopThinkingHaptics()
+        UINotificationFeedbackGenerator().notificationOccurred(.error)
+        
         let failureReason = result.status.displayTelemetryTitle
         print("[AI] Request failed (\(failureReason)). Showing failure notification.")
         
@@ -571,7 +594,7 @@ struct CameraView: View {
             self.interactionState = .error(userMessage)
         }
         
-        UIAccessibility.post(notification: .announcement, argument: userMessage)
+        AccessibilityVoiceService.shared.speak(userMessage)
         
         // Reset to idle after brief error display (persistent AI answer remains intact)
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
@@ -643,6 +666,7 @@ struct CameraView: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: 120)
+        .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in
@@ -661,8 +685,15 @@ struct CameraView: View {
         .disabled(isRequestInFlight && !isHoldingSpeechButton)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(voiceAreaAccessibilityLabel)
-        .accessibilityHint("Press and hold while speaking, then release to get an answer.")
+        .accessibilityValue(voiceAreaAccessibilityValue)
+        .accessibilityHint(voiceAreaAccessibilityHint)
         .accessibilityAddTraits(.isButton)
+        .accessibilityAction(.default) {
+            handleVoiceAreaAccessibilityAction()
+        }
+        .accessibilityActionIf(named: "Repeat Answer", condition: currentAIAnswer != nil) {
+            repeatLastAnswer()
+        }
     }
     
     private var voiceAreaBackgroundColor: Color {
@@ -707,14 +738,61 @@ struct CameraView: View {
     private var voiceAreaAccessibilityLabel: String {
         switch interactionState {
         case .listening:
-            return "Listening."
+            return "Recording question"
         case .thinking:
-            return "Analyzing your question."
-        case .error(let msg):
-            return msg
-        default:
-            return "Hold to ask a question about what the camera sees."
+            return "Processing question"
+        case .answered:
+            return "Ask another question"
+        case .error:
+            return "Try asking again"
+        case .idle:
+            return currentAIAnswer != nil ? "Ask another question" : "Ask a question"
         }
+    }
+    
+    private var voiceAreaAccessibilityValue: String {
+        switch interactionState {
+        case .listening:
+            return "Recording in progress"
+        case .thinking:
+            return "Analyzing image and speech"
+        case .answered:
+            return "Answer available"
+        case .error(let msg):
+            return "Error: \(msg)"
+        case .idle:
+            return ""
+        }
+    }
+    
+    private var voiceAreaAccessibilityHint: String {
+        switch interactionState {
+        case .listening:
+            return "Double-tap to stop recording and submit your question."
+        case .thinking:
+            return "Please wait while your question is analyzed."
+        case .answered:
+            return "Double-tap to ask another question, or use the Actions rotor to repeat the previous answer. Or press and hold while speaking."
+        case .error:
+            return "Double-tap to try asking again, or press and hold while speaking."
+        case .idle:
+            return "Double-tap to start speaking, then double-tap again to get an answer. Or press and hold the bottom of the screen while speaking."
+        }
+    }
+    
+    private func handleVoiceAreaAccessibilityAction() {
+        if isHoldingSpeechButton || interactionState == .listening {
+            isHoldingSpeechButton = false
+            stopSpeechInput()
+        } else if !isRequestInFlight {
+            isHoldingSpeechButton = true
+            startSpeechInput()
+        }
+    }
+    
+    private func repeatLastAnswer() {
+        guard let answer = currentAIAnswer else { return }
+        AccessibilityVoiceService.shared.speak("\(answer.primaryHeadline). \(answer.detailedDescription ?? "")")
     }
     
     // MARK: - Analyze Fallback Button (Microphone Denied)
@@ -833,6 +911,7 @@ struct CameraView: View {
     // MARK: - State Reset Helper
     
     private func resetSessionState() {
+        stopThinkingHaptics()
         sceneDivergenceStartTime = nil
         lastAnalyzedScene = nil
         currentAIAnswer = nil
@@ -843,6 +922,27 @@ struct CameraView: View {
         pendingVoiceReference = nil
         interactionState = .idle
         interpretationService.resetStability()
+    }
+    
+    // MARK: - Thinking State Haptic Heartbeat
+    
+    private func startThinkingHaptics() {
+        stopThinkingHaptics()
+        thinkingHapticTask = Task { @MainActor in
+            let generator = UIImpactFeedbackGenerator(style: .soft)
+            generator.prepare()
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_200_000_000) // 1.2s interval
+                if Task.isCancelled { break }
+                generator.impactOccurred(intensity: 0.6)
+                generator.prepare()
+            }
+        }
+    }
+    
+    private func stopThinkingHaptics() {
+        thinkingHapticTask?.cancel()
+        thinkingHapticTask = nil
     }
     
     // MARK: - Simplified Interpretation Card
@@ -914,6 +1014,9 @@ struct CameraView: View {
         .padding(.horizontal, 16)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(interpretationAccessibilityLabel(interpretation))
+        .accessibilityActionIf(named: "Repeat Answer", condition: currentAIAnswer != nil) {
+            repeatLastAnswer()
+        }
     }
     
     // MARK: - Confidence Helpers (Simplified)
@@ -1199,4 +1302,17 @@ struct CameraView: View {
 
 #Preview {
     CameraView()
+}
+
+// MARK: - Accessibility Helper Extension
+
+extension View {
+    @ViewBuilder
+    func accessibilityActionIf(named name: String, condition: Bool, action: @escaping () -> Void) -> some View {
+        if condition {
+            self.accessibilityAction(named: name, action)
+        } else {
+            self
+        }
+    }
 }
