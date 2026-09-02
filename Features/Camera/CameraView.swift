@@ -137,7 +137,10 @@ struct CameraView: View {
             if !hasAnnouncedCameraArrival {
                 hasAnnouncedCameraArrival = true
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                    AccessibilityVoiceService.shared.speak("Camera ready. Touch and hold the bottom of the screen to ask a question.")
+                    let arrivalMsg = speechService.isIndonesian
+                        ? "Kamera siap. Tahan bagian bawah layar untuk bertanya."
+                        : "Camera ready. Touch and hold the bottom of the screen to ask a question."
+                    AccessibilityVoiceService.shared.speak(arrivalMsg, languageCode: speechService.selectedLocale.identifier)
                 }
             }
         }
@@ -316,7 +319,7 @@ struct CameraView: View {
         }
         
         // 3. Continuous Local Vision + OCR Interpretation (for live viewfinder when no AI answer is active)
-        liveVisionInterpretation = interpretationService.interpret(recognition: recognition)
+        liveVisionInterpretation = interpretationService.interpret(recognition: recognition, locale: speechService.selectedLocale)
     }
     
     // MARK: - User-Initiated Manual Analysis Fallback (Microphone Denied)
@@ -351,7 +354,8 @@ struct CameraView: View {
             analyzedAt: requestStartTime
         )
         
-        AccessibilityVoiceService.shared.speak("Analyzing image.")
+        let analyzeMsg = speechService.isIndonesian ? "Menganalisis gambar." : "Analyzing image."
+        AccessibilityVoiceService.shared.speak(analyzeMsg, languageCode: speechService.selectedLocale.identifier)
         
         var onDeviceHints: [String] = []
         if !cameraManager.latestResult.recognizedTexts.isEmpty {
@@ -361,7 +365,10 @@ struct CameraView: View {
         if let topClass = cameraManager.latestResult.topClassification {
             onDeviceHints.append("Visual category: \(topClass.identifier)")
         }
-        let prompt = MultimodalService.buildDefaultAnalysisPrompt(onDeviceHints: onDeviceHints)
+        let prompt = MultimodalService.buildDefaultAnalysisPrompt(
+            onDeviceHints: onDeviceHints,
+            locale: speechService.selectedLocale
+        )
         
         Task {
             let result = await multimodalService.analyzeImage(
@@ -384,7 +391,8 @@ struct CameraView: View {
                     
                     let synthesized = self.interpretationService.interpret(
                         recognition: self.cameraManager.latestResult,
-                        multimodal: result
+                        multimodal: result,
+                        locale: self.speechService.selectedLocale
                     )
                     
                     withAnimation(.easeInOut(duration: 0.25)) {
@@ -393,7 +401,10 @@ struct CameraView: View {
                         self.interactionState = .answered
                     }
                     
-                    AccessibilityVoiceService.shared.speak("\(synthesized.primaryHeadline). \(synthesized.detailedDescription ?? "")")
+                    AccessibilityVoiceService.shared.speak(
+                        "\(synthesized.primaryHeadline). \(synthesized.detailedDescription ?? "")",
+                        languageCode: self.speechService.selectedLocale.identifier
+                    )
                 } else {
                     handleGeminiFailure(result: result, sceneRef: snapshotReference)
                 }
@@ -427,7 +438,8 @@ struct CameraView: View {
             interactionState = .listening
         }
         
-        AccessibilityVoiceService.shared.speak("Listening.")
+        let listeningMsg = speechService.isIndonesian ? "Mendengarkan." : "Listening."
+        AccessibilityVoiceService.shared.speak(listeningMsg, languageCode: speechService.selectedLocale.identifier)
         
         Task {
             let granted = await speechService.requestPermissions()
@@ -476,8 +488,11 @@ struct CameraView: View {
             self.pendingVoiceSnapshot = nil
             self.pendingVoiceReference = nil
             self.interactionState = .idle
-            self.lastSpokenQuestion = "I didn't hear a question. Hold and ask again."
-            AccessibilityVoiceService.shared.speak("I didn't hear a question. Hold and ask again.")
+            let emptyMsg = speechService.isIndonesian
+                ? "Tidak mendengar pertanyaan. Tahan dan tanya lagi."
+                : "I didn't hear a question. Hold and ask again."
+            self.lastSpokenQuestion = emptyMsg
+            AccessibilityVoiceService.shared.speak(emptyMsg, languageCode: speechService.selectedLocale.identifier)
             return
         }
         
@@ -514,7 +529,10 @@ struct CameraView: View {
         self.interactionState = .thinking
         startThinkingHaptics()
         
-        AccessibilityVoiceService.shared.speak("Analyzing your question.")
+        let analyzingQuestionMsg = speechService.isIndonesian
+            ? "Menganalisis pertanyaan Anda."
+            : "Analyzing your question."
+        AccessibilityVoiceService.shared.speak(analyzingQuestionMsg, languageCode: speechService.selectedLocale.identifier)
         
         let requestStartTime = Date()
         let previousContext = self.currentAIAnswer.map { "\($0.primaryHeadline): \($0.detailedDescription ?? "")" }
@@ -531,10 +549,11 @@ struct CameraView: View {
         let prompt = MultimodalService.buildVoiceQuestionPrompt(
             userQuestion: question,
             previousContext: previousContext,
-            onDeviceHints: onDeviceHints
+            onDeviceHints: onDeviceHints,
+            locale: speechService.selectedLocale
         )
         
-        print("[\(triggerType.uppercased())] Sending Gemini query for: \"\(question)\" (\(jpegData.count) bytes)...")
+        print("[\(triggerType.uppercased())] Sending Gemini query for: \"\(question)\" (\(jpegData.count) bytes) in locale \(speechService.selectedLocale.identifier)...")
         
         Task {
             let result = await multimodalService.analyzeImage(
@@ -561,7 +580,8 @@ struct CameraView: View {
                     
                     let synthesized = self.interpretationService.interpret(
                         recognition: self.cameraManager.latestResult,
-                        multimodal: result
+                        multimodal: result,
+                        locale: self.speechService.selectedLocale
                     )
                     
                     withAnimation(.easeInOut(duration: 0.25)) {
@@ -570,7 +590,10 @@ struct CameraView: View {
                         self.interactionState = .answered
                     }
                     
-                    AccessibilityVoiceService.shared.speak("\(synthesized.primaryHeadline). \(synthesized.detailedDescription ?? "")")
+                    AccessibilityVoiceService.shared.speak(
+                        "\(synthesized.primaryHeadline). \(synthesized.detailedDescription ?? "")",
+                        languageCode: self.speechService.selectedLocale.identifier
+                    )
                 } else {
                     handleGeminiFailure(result: result, sceneRef: sceneRef)
                 }
@@ -588,20 +611,33 @@ struct CameraView: View {
         print("[AI] Request failed (\(failureReason)). Showing failure notification.")
         
         let userMessage: String
-        if result.status.isRateLimited {
-            userMessage = "The service is temporarily busy. Please try again in a moment."
-        } else if case .networkError = result.status {
-            userMessage = "I couldn't connect. Check your internet connection and try again."
-        } else if case .authenticationError = result.status {
-            userMessage = "API key issue. Check your key in Settings."
+        if speechService.isIndonesian {
+            if result.status.isRateLimited {
+                userMessage = "Layanan sedang sibuk. Silakan coba sebentar lagi."
+            } else if case .networkError = result.status {
+                userMessage = "Gagal terhubung. Periksa koneksi internet Anda dan coba lagi."
+            } else if case .authenticationError = result.status {
+                userMessage = "Masalah kunci API. Periksa kunci Anda di Pengaturan."
+            } else {
+                userMessage = "Tidak dapat menentukan jawaban dari gambar ini. Coba tanya lagi atau ubah posisi kamera."
+            }
         } else {
-            userMessage = "I couldn't determine an answer from this image. Try asking again or repositioning the camera."
+            if result.status.isRateLimited {
+                userMessage = "The service is temporarily busy. Please try again in a moment."
+            } else if case .networkError = result.status {
+                userMessage = "I couldn't connect. Check your internet connection and try again."
+            } else if case .authenticationError = result.status {
+                userMessage = "API key issue. Check your key in Settings."
+            } else {
+                userMessage = "I couldn't determine an answer from this image. Try asking again or repositioning the camera."
+            }
         }
         
         // If there is no previous AI answer, update liveVisionInterpretation to display the helpful error note
         if currentAIAnswer == nil {
             let localFallback = self.interpretationService.interpret(
-                recognition: self.cameraManager.latestResult
+                recognition: self.cameraManager.latestResult,
+                locale: self.speechService.selectedLocale
             )
             self.liveVisionInterpretation = InterpretationResult(
                 primaryHeadline: localFallback.primaryHeadline,
@@ -618,7 +654,7 @@ struct CameraView: View {
             self.interactionState = .error(userMessage)
         }
         
-        AccessibilityVoiceService.shared.speak(userMessage)
+        AccessibilityVoiceService.shared.speak(userMessage, languageCode: speechService.selectedLocale.identifier)
         
         // Reset to idle after brief error display (persistent AI answer remains intact)
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
@@ -816,7 +852,10 @@ struct CameraView: View {
     
     private func repeatLastAnswer() {
         guard let answer = currentAIAnswer else { return }
-        AccessibilityVoiceService.shared.speak("\(answer.primaryHeadline). \(answer.detailedDescription ?? "")")
+        AccessibilityVoiceService.shared.speak(
+            "\(answer.primaryHeadline). \(answer.detailedDescription ?? "")",
+            languageCode: speechService.selectedLocale.identifier
+        )
     }
     
     // MARK: - Analyze Fallback Button (Microphone Denied)

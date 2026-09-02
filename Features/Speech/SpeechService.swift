@@ -27,10 +27,18 @@ final class SpeechService {
     var status: SpeechServiceStatus = .idle
     var partialTranscript: String = ""
     var finalTranscript: String = ""
-    var selectedLocale: Locale = Locale(identifier: "en-US") {
+    var selectedLocale: Locale = {
+        let savedIdentifier = UserDefaults.standard.string(forKey: "selectedLanguageCode") ?? "en-US"
+        return Locale(identifier: savedIdentifier)
+    }() {
         didSet {
+            UserDefaults.standard.set(selectedLocale.identifier, forKey: "selectedLanguageCode")
             setupRecognizer()
         }
+    }
+    
+    var isIndonesian: Bool {
+        selectedLocale.identifier.hasPrefix("id")
     }
     
     // Internal Audio & Speech Components

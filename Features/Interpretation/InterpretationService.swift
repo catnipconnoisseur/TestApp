@@ -200,10 +200,11 @@ final class InterpretationService: @unchecked Sendable {
     
     // MARK: - Evidence Synthesis
     
-    /// Interprets the combined evidence from on-device Vision/OCR and optional Multimodal reasoning.
+    /// Interprets the combined evidence from on-device Vision/OCR and optional Multimodal reasoning with locale awareness.
     func interpret(
         recognition: RecognitionResult,
-        multimodal: MultimodalService.MultimodalResult? = nil
+        multimodal: MultimodalService.MultimodalResult? = nil,
+        locale: Locale = Locale(identifier: "en-US")
     ) -> InterpretationResult {
         let topIdentifier = updateSmoothedClassification(from: recognition)
         let ocrText = recognition.combinedText
@@ -215,7 +216,8 @@ final class InterpretationService: @unchecked Sendable {
                 multimodalText: multimodal.text,
                 topVisionIdentifier: topIdentifier,
                 detectedRupiah: detectedRupiah,
-                ocrText: ocrText
+                ocrText: ocrText,
+                locale: locale
             )
         }
         
@@ -224,22 +226,26 @@ final class InterpretationService: @unchecked Sendable {
             topVisionIdentifier: topIdentifier,
             detectedRupiah: detectedRupiah,
             ocrText: ocrText,
-            recognition: recognition
+            recognition: recognition,
+            locale: locale
         )
     }
     
     // MARK: - Internal Synthesis Logic
     
-    /// Synthesizes Multimodal reasoning with local on-device signals, producing clean plain text without Markdown syntax.
+    /// Synthesizes Multimodal reasoning with local on-device signals, producing clean plain text without Markdown syntax in the selected language.
     private func interpretWithMultimodal(
         multimodalText: String,
         topVisionIdentifier: String?,
         detectedRupiah: String?,
-        ocrText: String
+        ocrText: String,
+        locale: Locale = Locale(identifier: "en-US")
     ) -> InterpretationResult {
         var sources: [EvidenceSource] = [.multimodal]
         if topVisionIdentifier != nil { sources.append(.onDeviceVision) }
         if !ocrText.isEmpty { sources.append(.onDeviceOCR) }
+        
+        let isIndonesian = locale.identifier.hasPrefix("id")
         
         // Parse structured plain-text response (HEADLINE: and DESCRIPTION:)
         let (parsedHeadline, parsedDescription) = parseStructuredMultimodalText(multimodalText)
@@ -247,8 +253,9 @@ final class InterpretationService: @unchecked Sendable {
         let lowerHeadline = parsedHeadline.lowercased()
         let isCurrencyContext = lowerDesc.contains("banknote") || lowerDesc.contains("rupiah") ||
             lowerDesc.contains("currency") || lowerDesc.contains("indonesian") ||
+            lowerDesc.contains("uang") || lowerDesc.contains("duit") ||
             lowerHeadline.contains("banknote") || lowerHeadline.contains("rupiah") ||
-            lowerHeadline.contains("rp") || lowerHeadline.contains("money") ||
+            lowerHeadline.contains("uang") || lowerHeadline.contains("rp") || lowerHeadline.contains("money") ||
             topVisionIdentifier?.lowercased().contains("currency") == true ||
             topVisionIdentifier?.lowercased().contains("money") == true
         
@@ -261,11 +268,26 @@ final class InterpretationService: @unchecked Sendable {
                 lowerDesc.contains("cannot determine") ||
                 lowerDesc.contains("unable to determine") ||
                 lowerDesc.contains("uncertain") ||
-                lowerHeadline.contains("unclear")
+                lowerDesc.contains("tidak jelas") ||
+                lowerDesc.contains("belum jelas") ||
+                lowerDesc.contains("tidak dapat menentukan") ||
+                lowerHeadline.contains("unclear") ||
+                lowerHeadline.contains("belum jelas")
             
             if let denomination = confirmedDenomination, !denominationUnclear {
+                let headline: String
+                if isIndonesian {
+                    if parsedHeadline.lowercased().contains("uang") || parsedHeadline.lowercased().contains("rp") {
+                        headline = parsedHeadline
+                    } else {
+                        headline = "Uang Kertas \(denomination)"
+                    }
+                } else {
+                    headline = "\(denomination) Indonesian Banknote"
+                }
+                
                 return InterpretationResult(
-                    primaryHeadline: "\(denomination) Indonesian Banknote",
+                    primaryHeadline: headline,
                     detailedDescription: parsedDescription,
                     confidence: .strong,
                     cautionaryNote: nil,
@@ -274,11 +296,16 @@ final class InterpretationService: @unchecked Sendable {
                     timestamp: Date()
                 )
             } else {
+                let headline = isIndonesian ? "Uang Kertas (Pecahan Belum Jelas)" : "Indonesian Banknote (Denomination Unclear)"
+                let caution = isIndonesian
+                    ? "Pecahan spesifik belum dapat dipastikan. Coba balik atau ratakan uang di bawah pencahayaan yang baik."
+                    : "Specific denomination could not be confirmed. Try turning or flattening the note under good light."
+                
                 return InterpretationResult(
-                    primaryHeadline: "Indonesian Banknote (Denomination Unclear)",
+                    primaryHeadline: headline,
                     detailedDescription: parsedDescription,
                     confidence: .moderate,
-                    cautionaryNote: "Specific denomination could not be confirmed. Try turning or flattening the note under good light.",
+                    cautionaryNote: caution,
                     contributingSources: sources,
                     isSpecificIdentification: false,
                     timestamp: Date()
@@ -288,12 +315,14 @@ final class InterpretationService: @unchecked Sendable {
         
         // Scenario B: Conflict Detection
         if let vision = topVisionIdentifier?.lowercased() {
-            if (vision == "machine" || vision == "computer") && (lowerDesc.contains("rhizome") || lowerDesc.contains("spice") || lowerDesc.contains("fruit") || lowerDesc.contains("plant")) {
+            if (vision == "machine" || vision == "computer") && (lowerDesc.contains("rhizome") || lowerDesc.contains("spice") || lowerDesc.contains("fruit") || lowerDesc.contains("plant") || lowerDesc.contains("rimpang") || lowerDesc.contains("rempah")) {
+                let headline = isIndonesian ? "Objek Kurang Jelas (Indikasi Bertentangan)" : "Ambiguous Object (Conflicting Evidence)"
+                let caution = isIndonesian ? "Terdeteksi indikasi visual yang bertentangan. Posisikan ulang kamera dan analisis kembali." : "Conflicting visual indicators detected. Reposition camera and re-analyze."
                 return InterpretationResult(
-                    primaryHeadline: "Ambiguous Object (Conflicting Evidence)",
+                    primaryHeadline: headline,
                     detailedDescription: parsedDescription,
                     confidence: .conflicting,
-                    cautionaryNote: "Conflicting visual indicators detected. Reposition camera and re-analyze.",
+                    cautionaryNote: caution,
                     contributingSources: sources,
                     isSpecificIdentification: false,
                     timestamp: Date()
@@ -302,13 +331,13 @@ final class InterpretationService: @unchecked Sendable {
         }
         
         // Scenario C: General Object / Spice / Produce Semantic Identification
-        let isSpecific = !lowerDesc.contains("uncertain") && !lowerDesc.contains("unable to identify") && !lowerDesc.contains("not completely certain")
+        let isSpecific = !lowerDesc.contains("uncertain") && !lowerDesc.contains("unable to identify") && !lowerDesc.contains("not completely certain") && !lowerDesc.contains("tidak pasti") && !lowerDesc.contains("tidak dapat mengidentifikasi")
         
         return InterpretationResult(
             primaryHeadline: parsedHeadline,
             detailedDescription: parsedDescription,
             confidence: isSpecific ? .strong : .moderate,
-            cautionaryNote: isSpecific ? nil : "Identification has plausible alternatives.",
+            cautionaryNote: isSpecific ? nil : (isIndonesian ? "Identifikasi memiliki alternatif yang masuk akal." : "Identification has plausible alternatives."),
             contributingSources: sources,
             isSpecificIdentification: isSpecific,
             timestamp: Date()
@@ -320,15 +349,17 @@ final class InterpretationService: @unchecked Sendable {
         topVisionIdentifier: String?,
         detectedRupiah: String?,
         ocrText: String,
-        recognition: RecognitionResult
+        recognition: RecognitionResult,
+        locale: Locale = Locale(identifier: "en-US")
     ) -> InterpretationResult {
+        let isIndonesian = locale.identifier.hasPrefix("id")
         
         // Scenario A: Currency identified with verified printed denomination
         if let vision = topVisionIdentifier?.lowercased(), vision.contains("currency") || vision.contains("money") {
             if let rupiah = detectedRupiah {
                 return InterpretationResult(
-                    primaryHeadline: "\(rupiah) Indonesian Banknote",
-                    detailedDescription: "Verified by printed denomination '\(rupiah)' on currency paper.",
+                    primaryHeadline: isIndonesian ? "Uang Kertas \(rupiah)" : "\(rupiah) Indonesian Banknote",
+                    detailedDescription: isIndonesian ? "Terverifikasi dari nominal cetak '\(rupiah)' pada kertas uang." : "Verified by printed denomination '\(rupiah)' on currency paper.",
                     confidence: .strong,
                     cautionaryNote: nil,
                     contributingSources: [.onDeviceVision, .onDeviceOCR],
@@ -337,10 +368,10 @@ final class InterpretationService: @unchecked Sendable {
                 )
             } else {
                 return InterpretationResult(
-                    primaryHeadline: "Currency / Banknote (Denomination Unclear)",
-                    detailedDescription: "Identified as currency paper. Tap Analyze for AI visual details.",
+                    primaryHeadline: isIndonesian ? "Uang Kertas (Pecahan Belum Jelas)" : "Currency / Banknote (Denomination Unclear)",
+                    detailedDescription: isIndonesian ? "Terdeteksi kertas uang. Tahan mikrofon untuk tanya detail AI." : "Identified as currency paper. Tap Analyze for AI visual details.",
                     confidence: .moderate,
-                    cautionaryNote: "Denomination text not yet visible in frame.",
+                    cautionaryNote: isIndonesian ? "Teks nominal belum terlihat jelas." : "Denomination text not yet visible in frame.",
                     contributingSources: [.onDeviceVision],
                     isSpecificIdentification: false,
                     timestamp: Date()
@@ -351,8 +382,8 @@ final class InterpretationService: @unchecked Sendable {
         // Scenario B: OCR detected verified currency text
         if let rupiah = detectedRupiah, ocrText.lowercased().contains("bank indonesia") || ocrText.lowercased().contains("indonesia") {
             return InterpretationResult(
-                primaryHeadline: "\(rupiah) Indonesian Banknote",
-                detailedDescription: "Recognized printed Bank Indonesia text with denomination '\(rupiah)'.",
+                primaryHeadline: isIndonesian ? "Uang Kertas \(rupiah)" : "\(rupiah) Indonesian Banknote",
+                detailedDescription: isIndonesian ? "Mengenali teks cetak Bank Indonesia dengan nominal '\(rupiah)'." : "Recognized printed Bank Indonesia text with denomination '\(rupiah)'.",
                 confidence: .moderate,
                 cautionaryNote: nil,
                 contributingSources: [.onDeviceOCR],
@@ -365,8 +396,8 @@ final class InterpretationService: @unchecked Sendable {
         if let vision = topVisionIdentifier?.lowercased(), vision.contains("document") || vision.contains("paper") {
             if !ocrText.isEmpty {
                 return InterpretationResult(
-                    primaryHeadline: "Document with Text",
-                    detailedDescription: "Visible text: \"\(truncate(ocrText, limit: 120))\"",
+                    primaryHeadline: isIndonesian ? "Dokumen Berisi Teks" : "Document with Text",
+                    detailedDescription: isIndonesian ? "Teks terlihat: \"\(truncate(ocrText, limit: 120))\"" : "Visible text: \"\(truncate(ocrText, limit: 120))\"",
                     confidence: .moderate,
                     cautionaryNote: nil,
                     contributingSources: [.onDeviceVision, .onDeviceOCR],
@@ -381,7 +412,7 @@ final class InterpretationService: @unchecked Sendable {
             let formattedTitle = formatTaxonomyTitle(vision)
             return InterpretationResult(
                 primaryHeadline: formattedTitle,
-                detailedDescription: "Broad category detected on-device. Tap Analyze for AI visual details.",
+                detailedDescription: isIndonesian ? "Kategori umum terdeteksi di perangkat. Tahan mikrofon untuk detail AI." : "Broad category detected on-device. Tap Analyze for AI visual details.",
                 confidence: .moderate,
                 cautionaryNote: nil,
                 contributingSources: [.onDeviceVision],
@@ -457,7 +488,13 @@ final class InterpretationService: @unchecked Sendable {
             "it appears to be an ", "it appears to be a ", "it appears to be ",
             "it is an ", "it is a ", "it is ",
             "it's an ", "it's a ", "it's ",
-            "i can see an ", "i can see a ", "i can see "
+            "i can see an ", "i can see a ", "i can see ",
+            "berdasarkan gambar, ini adalah sebuah ", "berdasarkan gambar, ini adalah seorang ", "berdasarkan gambar, ini adalah ",
+            "berdasarkan gambar, ini merupakan ", "berdasarkan gambar, ini ", "berdasarkan gambar, ",
+            "menurut gambar, ini adalah ", "menurut gambar, ", "gambar ini menunjukkan sebuah ", "gambar ini menunjukkan seorang ", "gambar ini menunjukkan ",
+            "ini adalah sebuah ", "ini adalah seorang ", "ini adalah ", "ini merupakan sebuah ", "ini merupakan ",
+            "terlihat sebuah ", "terlihat seorang ", "terlihat ", "objek ini adalah sebuah ", "objek ini adalah ",
+            "objek utama adalah sebuah ", "objek utama adalah ", "saya melihat sebuah ", "saya melihat "
         ]
         for prefix in prefixesToStrip {
             if cleaned.lowercased().hasPrefix(prefix) {

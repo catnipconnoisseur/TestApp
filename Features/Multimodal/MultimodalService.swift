@@ -43,14 +43,45 @@ final class MultimodalService: Sendable {
         var status: ResponseStatus = .idle
     }
     
+    // MARK: - Language Directive Helper
+    
+    private static func buildLanguageDirective(for locale: Locale) -> (directive: String, headlineContract: String, descriptionContract: String) {
+        let identifier = locale.identifier.lowercased()
+        if identifier.hasPrefix("id") {
+            let directive = """
+            LANGUAGE DIRECTIVE (STRICT MANDATORY REQUIREMENT):
+            - The user's active application language is BAHASA INDONESIA.
+            - You MUST generate your ENTIRE response (both HEADLINE and DESCRIPTION) strictly in natural, fluent Bahasa Indonesia.
+            - NEVER respond in English, even if the user's question was phrased in English, and even if printed text or labels on the object are in English.
+            - Translate any necessary visual descriptions naturally into Indonesian (e.g. "Uang Rp50.000", "Botol Minum", "Kancing di kanan atas").
+            """
+            let headline = "[Jawaban singkat 1 sampai 4 kata dalam Bahasa Indonesia, contoh: \"Uang Rp50.000\", \"Botol Minum\", \"Tombol Kanan Atas\"]"
+            let desc = "[1 sampai 3 kalimat jelas dan natural dalam Bahasa Indonesia yang menjawab langsung pertanyaan pengguna]"
+            return (directive, headline, desc)
+        } else {
+            let languageName = locale.localizedString(forIdentifier: locale.identifier) ?? "English"
+            let directive = """
+            LANGUAGE DIRECTIVE:
+            - The user's active application language is \(languageName.uppercased()).
+            - You MUST generate your entire response (both HEADLINE and DESCRIPTION) in natural \(languageName).
+            - Do not switch languages unless explicitly requested by the user.
+            """
+            let headline = "[Direct answer or main idea in 1 to 4 words, e.g. \"Rp50,000 Banknote\", \"Hydration Bottle\", \"Top-Right Button\"]"
+            let desc = "[1 to 3 clear, natural sentences directly answering the user's question, providing relevant reasoning, practical guidance, or appropriate uncertainty]"
+            return (directive, headline, desc)
+        }
+    }
+    
     // MARK: - Structured Plain-Text Accessibility Prompts
     
     static var defaultPrompt: String {
         buildDefaultAnalysisPrompt()
     }
     
-    /// Constructs the default visual identification prompt, with optional on-device sensor hints and deformation resilience.
-    static func buildDefaultAnalysisPrompt(onDeviceHints: [String] = []) -> String {
+    /// Constructs the default visual identification prompt, with optional on-device sensor hints, deformation resilience, and language localization.
+    static func buildDefaultAnalysisPrompt(onDeviceHints: [String] = [], locale: Locale = Locale(identifier: "en-US")) -> String {
+        let (languageDirective, headlineContract, descriptionContract) = buildLanguageDirective(for: locale)
+        
         var hintsSection = ""
         if !onDeviceHints.isEmpty {
             hintsSection = """
@@ -65,6 +96,8 @@ final class MultimodalService: Sendable {
         \(hintsSection)
         Return plain text only without any Markdown syntax (do not use asterisks, bold markers, bullet points, or empty placeholders like ****).
         
+        \(languageDirective)
+        
         PHYSICAL DEFORMATION & CURRENCY RECOGNITION RULES:
         1. PHYSICAL DEFORMATION RESILIENCE: Objects may be wrinkled, folded, creased, bent, held at an angle, partially occluded, or under uneven lighting/shadows. Physical deformation does NOT change an object's identity. Analyze the entire visual form and salient details rather than requiring a perfectly flat or centered view.
         2. CURRENCY & BANKNOTE RECOGNITION (especially Indonesian Rupiah): Actively synthesize all visible visual cues to identify the currency and exact denomination:
@@ -74,15 +107,23 @@ final class MultimodalService: Sendable {
            - Even if the banknote is crumpled, folded, or angled, determine the exact denomination from the combination of color, portrait, and visible numbers.
            - If the denomination cannot be determined with reasonable confidence (e.g. note is too heavily obscured or severely torn), state that it is an Indonesian banknote but the denomination is unclear.
 
+        OUTPUT CONTRACT:
         Provide your answer strictly in two labeled sections:
 
-        HEADLINE: <A concise 1 to 4 word name of the object or main finding, e.g. "Rp50,000 Banknote", "Shaker Bottle", "Galangal">
-        DESCRIPTION: <A concise 2 to 3 sentence natural explanation describing what it is, its purpose, key visual features, and plausible alternatives if ambiguous.>
+        HEADLINE: \(headlineContract)
+        DESCRIPTION: \(descriptionContract)
         """
     }
     
-    /// Constructs a structured, grounded multimodal prompt for an explicit spoken user question, tailored for an accessibility assistant.
-    static func buildVoiceQuestionPrompt(userQuestion: String, previousContext: String? = nil, onDeviceHints: [String] = []) -> String {
+    /// Constructs a structured, grounded multimodal prompt for an explicit spoken user question, tailored for an accessibility assistant with language localization.
+    static func buildVoiceQuestionPrompt(
+        userQuestion: String,
+        previousContext: String? = nil,
+        onDeviceHints: [String] = [],
+        locale: Locale = Locale(identifier: "en-US")
+    ) -> String {
+        let (languageDirective, headlineContract, descriptionContract) = buildLanguageDirective(for: locale)
+        
         var contextSection = ""
         if let context = previousContext, !context.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             contextSection = """
@@ -109,6 +150,8 @@ final class MultimodalService: Sendable {
         USER'S QUESTION:
         "\(userQuestion)"
 
+        \(languageDirective)
+
         PROGRESSIVE DISCLOSURE & REASONING RULES:
         1. PHYSICAL DEFORMATION RESILIENCE: Objects may be wrinkled, folded, creased, bent, held at an angle, partially occluded, or under uneven lighting/shadows. Physical deformation does NOT change an object's identity. Analyze the entire visual form and salient details rather than requiring a perfectly flat or centered view.
         2. BANKNOTE & MONEY ROBUSTNESS (especially Indonesian Rupiah):
@@ -117,10 +160,10 @@ final class MultimodalService: Sendable {
            - If the denomination genuinely cannot be determined, clearly state that it is an Indonesian banknote with denomination unclear.
         3. ANSWER ONLY WHAT IS ASKED: Do not answer questions the user did not ask. Do not volunteer unsolicited visual details (color, material, shape, dimensions, OCR, background) unless specifically requested or essential for safety/understanding. The user is in control and will ask follow-up questions if they need more detail.
         4. INTENT-CONTROLLED INFORMATION SCOPE:
-           - Identification ("What is this?"): Provide the concise name ("It's a hydration bottle." or "It's an Rp50,000 banknote.") and at most one short functional note.
+           - Identification ("What is this?"): Provide the concise name and at most one short functional note.
            - Purpose / Function ("What is this used for?"): State its practical use directly.
            - Appearance ("What does it look like?"): Describe physical form, material, and key visible features concretely.
-           - Color ("What color is it?"): State the colors directly ("The body is clear, and the lid is black." or "It is predominantly blue with multicolor security patterns.").
+           - Color ("What color is it?"): State the colors directly.
            - Material ("What is it made of?"): State the visible material with honest certainty.
            - Label / Text / OCR ("What's written on it?"): Read the relevant visible text directly without unrelated object commentary.
            - Location / Spatial ("Where is the button?"): Use clear relative positions (top-right, near the bottom, left, center, beside).
@@ -128,22 +171,16 @@ final class MultimodalService: Sendable {
            - Safety / Practical ("Can I put hot water in it?"): Combine visible material with general knowledge and honest caution.
            - Unanswerable ("What is the exact price?"): Clearly state that the information cannot be determined from the image alone. Never invent prices, dates, model numbers, or hidden properties.
            - Comprehensive Description Exception ("Describe everything you see"): ONLY when the user explicitly requests full visual details, provide a broader, well-organized overview of the main subject and its immediate surroundings.
-        5. NATURAL HUMAN PHRASING: Speak like a helpful person explaining something to a friend. NEVER use robotic filler phrases like:
-           - "The image shows..."
-           - "The main object visible in the image is..."
-           - "Based on the image..."
-           - "Upon analyzing the image..."
-           - "I can see that..."
-           - "Object classification:"
+        5. NATURAL HUMAN PHRASING: Speak like a helpful person explaining something to a friend. NEVER use robotic filler phrases.
         6. CUMULATIVE CONVERSATION: If the object was already identified in the active context, do NOT repeat the identification. Answer the new question directly.
-        7. GROUNDED REASONING & UNCERTAINTY: Distinguish what is clearly visible from reasonable inference ("It appears to be...", "Generally...", "Unless labeled otherwise..."). Never claim certainty that the image does not support.
+        7. GROUNDED REASONING & UNCERTAINTY: Distinguish what is clearly visible from reasonable inference. Never claim certainty that the image does not support.
         8. PLAIN TEXT ONLY: No Markdown formatting (no asterisks **, no hashes #, no bullets, no empty placeholders ****).
 
         OUTPUT CONTRACT:
         Provide your response strictly in two clearly labeled plain-text sections:
 
-        HEADLINE: [Direct answer or main idea in 1 to 4 words, e.g. "Rp50,000 Banknote", "Carrying Drinks", "Top-Right Button", "Clear And Black", "Price Not Visible"]
-        DESCRIPTION: [1 to 3 clear, natural sentences directly answering the user's question, providing relevant reasoning, practical guidance, or appropriate uncertainty]
+        HEADLINE: \(headlineContract)
+        DESCRIPTION: \(descriptionContract)
         """
     }
     
