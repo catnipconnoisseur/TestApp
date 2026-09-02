@@ -92,7 +92,7 @@ TestApp/
 │   └── Settings/
 │       └── SettingsView.swift             # Locale selection & developer diagnostics
 │
-├── docs/                                  # Persistent context documentation (uppercase)
+├── docs/                                  # Project technical documentation
 │   ├── STRUCTURE.md
 │   ├── CONVENTIONS.md
 │   ├── DECISIONS.md
@@ -101,11 +101,7 @@ TestApp/
 │   ├── AI-BEHAVIOR.md
 │   └── TESTING.md
 │
-├── tickets/                               # Development ticket tracking
-│   ├── ROADMAP.md
-│   └── T001-BASELINE.md through T008...
-│
-├── AGENTS.md                              # Root agent entry point & navigation
+├── AGENTS.md                              # Technical guide & architecture reference
 └── README.md
 ```
 
@@ -122,8 +118,8 @@ TestApp/
 - [x] **Conversational Multimodal Interaction & Voice Queries** (`Complete`)
 - [x] **Accessibility Experience & Banknote Robustness** (`Complete`)
 - [x] **Quick Access, Action Button & Central Setup Hub** (`Complete`)
-- [ ] **Scene-Anchored Conversational Memory (T009)** (`Next`)
-- [ ] **Create ML Feasibility & Evaluation** (`Planned`)
+- [x] **Scene-Anchored Conversational Memory** (`Complete`)
+- [ ] **Create ML Feasibility & Evaluation** (`In Progress`)
 
 ---
 
