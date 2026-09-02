@@ -20,6 +20,7 @@ This file tracks the evolving high-level roadmap for the 10-day Act Phase challe
 | **T008** | **Accessibility Experience & Intelligent Assistance** | `Complete` | UX audit, assistant mental model, automatic vs on-demand matrix, Action Button / Quick Access, and 4-step setup hub | T007 |
 | **T009** | **Scene-Anchored Conversational Memory** | `Complete` | Scene-anchored conversational threading, FeaturePrint stability, debounced divergence resets, and multi-turn Gemini reasoning | T008 |
 | **T010** | **Create ML Feasibility & Evaluation** | `Complete` | Evaluate custom model need vs built-in, comparative matrix, and architectural decision | T009 |
+| **T011** | **Field Usability Validation & Multi-Turn Tuning** | `Complete` | Physical device validation of conversational memory, Screen Curtain audit, and Action Button launch | T010 |
 
 ---
 
@@ -43,4 +44,5 @@ This file tracks the evolving high-level roadmap for the 10-day Act Phase challe
 - **2026-08-31**: T008 completed; accessibility UX audit, proactive permissions setup hub, Action Button & App Shortcuts integration, and banknote deformation robustness.
 - **2026-09-02**: T009 completed; scene-anchored conversational memory, on-device FeaturePrint stability evaluation, temporal divergence debouncing, and multi-turn Gemini reasoning.
 - **2026-09-02**: T010 completed; Create ML feasibility evaluation, comparative matrix, dataset requirements, and D018 hybrid architecture decision.
+- **2026-09-02**: T011 completed; physical iPhone field usability validation across conversational memory (Tests A–I), VoiceOver / Screen Curtain, and Action Button quick access.
 

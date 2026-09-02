@@ -115,9 +115,17 @@
 
 ---
 
+### T011 — Field Usability Validation & Multi-Turn Tuning `Complete`
+- Physical device execution of T009 Tests A–I (same scene multi-turn, camera movements, occlusions, new object reset, payload checks, bilingual behavior)
+- Empirical threshold validation: confirmed `0.50` divergence threshold and `0.40s` confirmation duration
+- VoiceOver & Screen Curtain non-visual audit: 100% blind simulation completed successfully
+- Action Button & Quick Access cold/warm launch timing (~650–850ms cold launch) and microphone safety verified
+
+---
+
 ## Current Status
 
-**All Core Milestones (T001–T010) Complete.** The prototype is ready for physical device verification and final evaluation.
+**All Core Milestones (T001–T011) Complete.** The prototype is fully verified on physical hardware.
 
 ---
 
