@@ -52,6 +52,17 @@ final class AccessibilityVoiceService: NSObject, AVSpeechSynthesizerDelegate {
         speakAloud(trimmed, languageCode: targetLanguage)
     }
     
+    /// Replays an interpretation headline and description aloud.
+    func repeatAnswer(headline: String, description: String?, languageCode: String? = nil) {
+        let fullText: String
+        if let description = description, !description.isEmpty {
+            fullText = "\(headline). \(description)"
+        } else {
+            fullText = headline
+        }
+        speak(fullText, languageCode: languageCode)
+    }
+    
     /// Speaks out loud using AVSpeechSynthesizer through the device speaker in the specified language.
     private func speakAloud(_ text: String, languageCode: String) {
         let audioSession = AVAudioSession.sharedInstance()

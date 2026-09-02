@@ -123,9 +123,17 @@
 
 ---
 
+### T012 — Repeat Answer & Tactile Thinking Haptics `Complete`
+- Added Accessibility Magic Tap (`.accessibilityAction(.magicTap)`) for two-finger double-tap instant answer replay
+- Added visible speaker replay button in `interpretationCard`
+- Implemented rhythmic tactile heartbeat pulses during `.thinking` state with success/error haptic feedback
+- Added `repeatAnswer` helper in `AccessibilityVoiceService` for unified audio coordination
+
+---
+
 ## Current Status
 
-**All Core Milestones (T001–T011) Complete.** The prototype is fully verified on physical hardware.
+**T001–T012 Complete.** Ready for T013 codebase cleanup and architecture polish.
 
 ---
 

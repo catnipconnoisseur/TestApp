@@ -92,6 +92,9 @@ struct CameraView: View {
     // Interaction State
     @State private var interactionState: InteractionState = .idle
     
+    // Tactile Thinking Haptics (T012)
+    @State private var thinkingHapticTask: Task<Void, Never>? = nil
+    
     // UI Sheets & Configuration
     @State private var showSettingsSheet = false
     @State private var showRawTelemetry = false
@@ -108,9 +111,6 @@ struct CameraView: View {
     
     // Scene phase for background/foreground lifecycle handling
     @Environment(\.scenePhase) private var scenePhase
-    
-    // Thinking State Haptic Task
-    @State private var thinkingHapticTask: Task<Void, Never>? = nil
     
     var body: some View {
         ZStack {
@@ -160,6 +160,9 @@ struct CameraView: View {
         }
         .onChange(of: cameraManager.latestResult) { _, newResult in
             handleIncomingVisionFrame(newResult)
+        }
+        .onChange(of: interactionState) { _, newState in
+            handleInteractionStateHaptics(newState)
         }
     }
     
@@ -224,6 +227,9 @@ struct CameraView: View {
                 bottomInteractionArea
                     .padding(.bottom, 8)
             }
+        }
+        .accessibilityAction(.magicTap) {
+            handleMagicTapAccessibilityAction()
         }
     }
     
@@ -932,10 +938,52 @@ struct CameraView: View {
     
     private func repeatLastAnswer() {
         guard let answer = currentAIAnswer else { return }
-        AccessibilityVoiceService.shared.speak(
-            "\(answer.primaryHeadline). \(answer.detailedDescription ?? "")",
+        let haptic = UIImpactFeedbackGenerator(style: .medium)
+        haptic.impactOccurred()
+        AccessibilityVoiceService.shared.repeatAnswer(
+            headline: answer.primaryHeadline,
+            description: answer.detailedDescription,
             languageCode: speechService.selectedLocale.identifier
         )
+    }
+    
+    // MARK: - Magic Tap & State Haptic Coordination (T012)
+    
+    private func handleMagicTapAccessibilityAction() {
+        if currentAIAnswer != nil {
+            repeatLastAnswer()
+        } else {
+            handleVoiceAreaAccessibilityAction()
+        }
+    }
+    
+    private func handleInteractionStateHaptics(_ state: InteractionState) {
+        switch state {
+        case .thinking:
+            thinkingHapticTask?.cancel()
+            thinkingHapticTask = Task { @MainActor in
+                let generator = UIImpactFeedbackGenerator(style: .light)
+                generator.prepare()
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 800_000_000)
+                    if Task.isCancelled { break }
+                    generator.impactOccurred(intensity: 0.65)
+                }
+            }
+        case .answered:
+            thinkingHapticTask?.cancel()
+            thinkingHapticTask = nil
+            let successFeedback = UINotificationFeedbackGenerator()
+            successFeedback.notificationOccurred(.success)
+        case .error:
+            thinkingHapticTask?.cancel()
+            thinkingHapticTask = nil
+            let errorFeedback = UINotificationFeedbackGenerator()
+            errorFeedback.notificationOccurred(.error)
+        case .idle, .listening:
+            thinkingHapticTask?.cancel()
+            thinkingHapticTask = nil
+        }
     }
     
     // MARK: - Analyze Fallback Button (Microphone Denied)
@@ -1093,7 +1141,7 @@ struct CameraView: View {
     private func interpretationCard(interpretation: InterpretationResult) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             
-            // Confidence dot + Headline
+            // Confidence dot + Headline + Visible Repeat Button (T012)
             HStack(alignment: .top, spacing: 8) {
                 // Simple colored dot for confidence (no text label)
                 Circle()
@@ -1109,6 +1157,24 @@ struct CameraView: View {
                     .foregroundStyle(.white)
                     .lineLimit(2)
                     .accessibilityAddTraits(.isHeader)
+                
+                Spacer()
+                
+                // Repeat Answer Button (Visible when an AI answer exists)
+                if currentAIAnswer != nil {
+                    Button {
+                        repeatLastAnswer()
+                    } label: {
+                        Image(systemName: "speaker.wave.2.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.9))
+                            .padding(8)
+                            .background(Color.white.opacity(0.18))
+                            .clipShape(Circle())
+                    }
+                    .accessibilityLabel(speechService.isIndonesian ? "Ulangi jawaban" : "Repeat answer")
+                    .accessibilityHint(speechService.isIndonesian ? "Ketuk dua kali untuk mendengarkan kembali jawaban ini." : "Double-tap to hear this answer again.")
+                }
             }
             
             // Description
