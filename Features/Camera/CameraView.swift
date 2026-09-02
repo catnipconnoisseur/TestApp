@@ -30,93 +30,17 @@ struct CameraPreviewRepresentable: UIViewRepresentable {
     }
 }
 
-// MARK: - Interaction State
-
-/// Describes the user-facing state of the voice interaction area.
-private enum InteractionState: Equatable {
-    case idle
-    case listening
-    case thinking
-    case answered
-    case error(String)
-}
-
-// MARK: - SwiftUI Camera View (Camera-First Accessible Interaction)
+// MARK: - SwiftUI Camera View (Camera-First Accessible View)
 
 struct CameraView: View {
-    @State private var cameraManager = CameraManager()
-    @State private var multimodalService = MultimodalService()
-    @State private var speechService = SpeechService()
-    private let interpretationService = InterpretationService()
-    
-    // Scene Anchoring & Conversational Memory (T009)
-    @State private var activeConversationThread: SceneConversationThread? = nil
-    
-    // State Tracking
-    @State private var lastAnalyzedScene: AnalyzedSceneReference?
-    @State private var sceneDivergenceStartTime: Date?
-    @State private var lastVisualObservationTime: Date = Date()
-    
-    // Conversation State & Persistent AI Answer
-    @State private var currentAIAnswer: InterpretationResult? = nil
-    @State private var liveVisionInterpretation: InterpretationResult = .initial
-    
-    // Request State & In-Flight Guards
-    @State private var isRequestInFlight = false
-    @State private var isProcessingVoiceQuery = false
-    @State private var lastRequestTimestamp: Date = .distantPast
-    @State private var lastTriggerType: String = "None"
-    
-    // Speech Input & Voice Snapshot State
-    @State private var isHoldingSpeechButton = false
-    @State private var showSpeechCard = false
-    @State private var lastSpokenQuestion: String? = nil
-    @State private var pendingVoiceSnapshot: Data? = nil
-    @State private var pendingVoiceReference: AnalyzedSceneReference? = nil
-    
-    // Diagnostic Telemetry (Developer View)
-    @State private var lastGeminiLatencyMs: Double = 0.0
-    @State private var lastPerceivedTurnaroundMs: Double = 0.0
-    @State private var lastAnalyzedPayloadBytes: Int = 0
-    @State private var lastMultimodalStatus: MultimodalService.ResponseStatus = .idle
-    @State private var lastDivergenceScore: Float = 0.0
-    
-    // Computed Current Interpretation
-    private var displayedInterpretation: InterpretationResult {
-        if let aiAnswer = currentAIAnswer {
-            return aiAnswer
-        }
-        return liveVisionInterpretation
-    }
-    
-    // Interaction State
-    @State private var interactionState: InteractionState = .idle
-    
-    // Tactile Thinking Haptics (T012)
-    @State private var thinkingHapticTask: Task<Void, Never>? = nil
-    
-    // UI Sheets & Configuration
-    @State private var showSettingsSheet = false
-    @State private var showRawTelemetry = false
-    
-    // Microphone permission tracking for fallback
-    @State private var microphoneAvailable: Bool = true
-    
-    // TEMPORARY T007.2 TEST INPUT — REMOVE AFTER TESTING
-    @State private var testQuestionInput: String = ""
-    // END TEMPORARY T007.2 TEST INPUT
-    
-    // Camera arrival announcement tracker
-    @State private var hasAnnouncedCameraArrival = false
-    
-    // Scene phase for background/foreground lifecycle handling
+    @StateObject private var viewModel = CameraViewModel()
     @Environment(\.scenePhase) private var scenePhase
     
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
             
-            switch cameraManager.status {
+            switch viewModel.cameraManager.status {
             case .ready:
                 cameraReadyView
                 
@@ -135,58 +59,26 @@ struct CameraView: View {
             }
         }
         .onAppear {
-            cameraManager.requestAccessAndSetup()
-            checkAndAnnounceLaunchState()
+            viewModel.onAppear()
         }
         .onDisappear {
-            cameraManager.stopSession()
-            speechService.cancelRecording()
-            stopThinkingHaptics()
-            AccessibilityVoiceService.shared.stopSpeaking()
-            resetSessionState()
+            viewModel.onDisappear()
         }
         .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .active {
-                cameraManager.requestAccessAndSetup()
-                checkAndAnnounceLaunchState()
-            }
+            viewModel.handleScenePhaseChange(newPhase)
         }
-        .sheet(isPresented: $showSettingsSheet) {
+        .sheet(isPresented: $viewModel.showSettingsSheet) {
             SettingsView(
-                selectedLocale: $speechService.selectedLocale,
-                showDeveloperDiagnostics: $showRawTelemetry
+                selectedLocale: $viewModel.speechService.selectedLocale,
+                showDeveloperDiagnostics: $viewModel.showRawTelemetry
             )
             .presentationDetents([.medium, .large])
         }
-        .onChange(of: cameraManager.latestResult) { _, newResult in
-            handleIncomingVisionFrame(newResult)
+        .onChange(of: viewModel.cameraManager.latestResult) { _, newResult in
+            viewModel.handleIncomingVisionFrame(newResult)
         }
-        .onChange(of: interactionState) { _, newState in
-            handleInteractionStateHaptics(newState)
-        }
-    }
-    
-    // MARK: - Launch & Quick Access Announcement
-    
-    private func checkAndAnnounceLaunchState() {
-        let isQuickAccess = UserDefaults.standard.bool(forKey: "launchedFromQuickAccess")
-        if isQuickAccess {
-            UserDefaults.standard.set(false, forKey: "launchedFromQuickAccess")
-            hasAnnouncedCameraArrival = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                let msg = speechService.isIndonesian
-                    ? "TestApp siap. Tahan bagian bawah layar untuk bertanya."
-                    : "TestApp ready. Touch and hold the bottom of the screen to ask a question."
-                AccessibilityVoiceService.shared.speak(msg, languageCode: speechService.selectedLocale.identifier)
-            }
-        } else if !hasAnnouncedCameraArrival {
-            hasAnnouncedCameraArrival = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                let arrivalMsg = speechService.isIndonesian
-                    ? "Kamera siap. Tahan bagian bawah layar untuk bertanya."
-                    : "Camera ready. Touch and hold the bottom of the screen to ask a question."
-                AccessibilityVoiceService.shared.speak(arrivalMsg, languageCode: speechService.selectedLocale.identifier)
-            }
+        .onChange(of: viewModel.interactionState) { _, newState in
+            viewModel.handleInteractionStateHaptics(newState)
         }
     }
     
@@ -195,7 +87,7 @@ struct CameraView: View {
     private var cameraReadyView: some View {
         ZStack {
             // Full-screen camera preview (hidden from VoiceOver to prevent background layer occlusion)
-            CameraPreviewRepresentable(session: cameraManager.captureSession)
+            CameraPreviewRepresentable(session: viewModel.cameraManager.captureSession)
                 .ignoresSafeArea()
                 .accessibilityHidden(true)
             
@@ -205,22 +97,17 @@ struct CameraView: View {
                 // Top Bar: Settings only
                 topBar
                 
-                // TEMPORARY T007.2 TEST INPUT — REMOVE AFTER TESTING (Hidden from VoiceOver)
-                temporaryTestingInputBar
-                    .accessibilityHidden(true)
-                // END TEMPORARY T007.2 TEST INPUT
-                
                 Spacer()
                 
                 // Speech feedback (shown during/after voice interaction)
-                if showSpeechCard {
+                if viewModel.showSpeechCard {
                     speechFeedbackCard
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                         .padding(.bottom, 8)
                 }
                 
                 // Interpretation/Result Card
-                interpretationCard(interpretation: displayedInterpretation)
+                interpretationCard(interpretation: viewModel.displayedInterpretation)
                     .padding(.bottom, 10)
                 
                 // Primary interaction: Large voice area or Analyze fallback
@@ -229,532 +116,95 @@ struct CameraView: View {
             }
         }
         .accessibilityAction(.magicTap) {
-            handleMagicTapAccessibilityAction()
+            viewModel.handleMagicTapAccessibilityAction()
         }
     }
     
-    // MARK: - TEMPORARY T007.2 TEST INPUT — REMOVE AFTER TESTING
-    
-    private var temporaryTestingInputBar: some View {
-        HStack(spacing: 8) {
-            TextField("Type a question for testing...", text: $testQuestionInput)
-                .textFieldStyle(.plain)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.18)))
-                .foregroundStyle(.white)
-                .tint(.blue)
-                .accessibilityLabel("Test question input")
-                .accessibilityHint("Enter a question to test Gemini multimodal reasoning.")
-            
-            Button {
-                let textToSubmit = testQuestionInput
-                // Dismiss keyboard
-                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                
-                // Capture current camera snapshot
-                let snapshot = cameraManager.captureCurrentFrameJPEG()
-                let sceneRef = AnalyzedSceneReference(
-                    dominantClassification: cameraManager.latestResult.topClassification?.identifier,
-                    ocrTextFingerprint: cameraManager.latestResult.combinedText,
-                    featurePrint: cameraManager.latestResult.featurePrint,
-                    analyzedAt: Date()
-                )
-                
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    showSpeechCard = true
-                }
-                
-                submitQuestion(
-                    textToSubmit,
-                    capturedSnapshot: snapshot,
-                    sceneReference: sceneRef,
-                    triggerType: "Test-Text"
-                )
-            } label: {
-                Text("Ask AI (Test)")
-                    .font(.caption)
-                    .fontWeight(.bold)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(RoundedRectangle(cornerRadius: 10).fill(isRequestInFlight ? Color.gray : Color.purple))
-            }
-            .disabled(isRequestInFlight)
-            .accessibilityLabel("Ask AI for typed test question")
-            .accessibilityHint("Submits the typed question and current camera image to Gemini.")
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 6)
-        .background(RoundedRectangle(cornerRadius: 14).fill(Color.black.opacity(0.75)))
-        .padding(.horizontal, 12)
-        .padding(.top, 4)
-    }
-    
-    // END TEMPORARY T007.2 TEST INPUT
-    
-    // MARK: - Top Bar (Settings Only)
+    // MARK: - Top Bar
     
     private var topBar: some View {
         HStack {
+            Spacer()
+            
             Button {
-                showSettingsSheet = true
+                viewModel.showSettingsSheet = true
             } label: {
                 Image(systemName: "gearshape.fill")
-                    .font(.system(size: 22))
-                    .foregroundStyle(.white.opacity(0.85))
-                    .padding(14)
-                    .background(Circle().fill(Color.black.opacity(0.3)))
+                    .font(.title3)
+                    .foregroundStyle(.white)
+                    .padding(12)
+                    .background(Color.black.opacity(0.55))
+                    .clipShape(Circle())
             }
-            .accessibilityLabel("Settings")
-            .accessibilityHint("Opens settings for language, API key, and diagnostics.")
-            
-            Spacer()
+            .accessibilityLabel(viewModel.speechService.isIndonesian ? "Pengaturan" : "Settings")
+            .accessibilityHint(viewModel.speechService.isIndonesian ? "Buka preferensi bahasa dan konfigurasi." : "Opens language preferences and configuration.")
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 16)
         .padding(.top, 8)
     }
     
-    // MARK: - Continuous On-Device Vision Engine & Scene Invalidation
+    // MARK: - Speech Feedback Card
     
-    private func handleIncomingVisionFrame(_ recognition: RecognitionResult) {
-        let now = Date()
-        let hasVisuals = recognition.hasObservations
-        
-        // 1. Empty Scene Invalidation: If camera pointed away into empty space for > 0.6s
-        if !hasVisuals {
-            if now.timeIntervalSince(lastVisualObservationTime) > 0.6 {
-                liveVisionInterpretation = .initial
-            }
-            return
-        }
-        
-        lastVisualObservationTime = now
-        
-        // 2. Track scene divergence against the active conversation thread (or last analyzed scene)
-        // NOTE: Scene divergence resets active multi-turn conversational context, but does NOT erase persistent AI answer display (T007.3).
-        if let activeThread = activeConversationThread {
-            if activeThread.isExpired() {
-                print("[MEMORY] Active conversation thread expired due to inactivity (> \(Int(SceneStabilityConfiguration.threadInactivityTimeout))s). Resetting thread.")
-                self.activeConversationThread = nil
-                self.sceneDivergenceStartTime = nil
-            } else {
-                let (divergence, reason) = interpretationService.computeSceneDivergence(current: recognition, reference: activeThread.anchorScene)
-                lastDivergenceScore = divergence
-                
-                if divergence >= SceneStabilityConfiguration.divergenceThreshold {
-                    if let start = sceneDivergenceStartTime {
-                        let elapsed = now.timeIntervalSince(start)
-                        if elapsed >= SceneStabilityConfiguration.confirmationDuration {
-                            print("[SCENE] Confirmed scene change (\(reason ?? "diverged")). Resetting active conversation thread. (Persistent AI answer remains visible)")
-                            self.activeConversationThread = nil
-                            self.sceneDivergenceStartTime = nil
-                        }
-                    } else {
-                        self.sceneDivergenceStartTime = now
-                        print("[SCENE] Candidate scene divergence observed (\(reason ?? "diverged")). Awaiting confirmation (\(SceneStabilityConfiguration.confirmationDuration)s)...")
-                    }
-                } else {
-                    if sceneDivergenceStartTime != nil {
-                        self.sceneDivergenceStartTime = nil
-                    }
-                }
-            }
-        } else if let reference = lastAnalyzedScene {
-            let (divergence, _) = interpretationService.computeSceneDivergence(current: recognition, reference: reference)
-            lastDivergenceScore = divergence
-            if divergence < SceneStabilityConfiguration.divergenceThreshold {
-                sceneDivergenceStartTime = nil
-            }
-        }
-        
-        // 3. Continuous Local Vision + OCR Interpretation (for live viewfinder when no AI answer is active)
-        liveVisionInterpretation = interpretationService.interpret(recognition: recognition, locale: speechService.selectedLocale)
-    }
-    
-    // MARK: - User-Initiated Manual Analysis Fallback (Microphone Denied)
-    
-    private func triggerManualAnalysis() {
-        guard !isRequestInFlight else { return }
-        
-        guard MultimodalConfig.hasConfiguredKey else {
-            showSettingsSheet = true
-            return
-        }
-        
-        print("[USER] Analyze button tapped. Capturing frame for generic Gemini reasoning...")
-        
-        guard let jpegData = cameraManager.captureCurrentFrameJPEG() else {
-            print("[USER] Frame capture failed.")
-            return
-        }
-        
-        isRequestInFlight = true
-        interactionState = .thinking
-        lastTriggerType = "Manual"
-        lastRequestTimestamp = Date()
-        let requestStartTime = Date()
-        startThinkingHaptics()
-        
-        // Snapshot the reference scene at the moment of capture
-        let snapshotReference = AnalyzedSceneReference(
-            dominantClassification: cameraManager.latestResult.topClassification?.identifier,
-            ocrTextFingerprint: cameraManager.latestResult.combinedText,
-            featurePrint: cameraManager.latestResult.featurePrint,
-            analyzedAt: requestStartTime
-        )
-        
-        let analyzeMsg = speechService.isIndonesian ? "Menganalisis gambar." : "Analyzing image."
-        AccessibilityVoiceService.shared.speak(analyzeMsg, languageCode: speechService.selectedLocale.identifier)
-        
-        var onDeviceHints: [String] = []
-        if !cameraManager.latestResult.recognizedTexts.isEmpty {
-            let topTexts = cameraManager.latestResult.recognizedTexts.prefix(6).map { "\"\($0.text)\"" }
-            onDeviceHints.append("Visible text detected on-device: \(topTexts.joined(separator: ", "))")
-        }
-        if let topClass = cameraManager.latestResult.topClassification {
-            onDeviceHints.append("Visual category: \(topClass.identifier)")
-        }
-        
-        let activeTurns = self.activeConversationThread?.turns ?? []
-        let manualQuestion = speechService.isIndonesian ? "Apa ini?" : "What is this?"
-        
-        Task {
-            let result = await multimodalService.analyzeMultiTurn(
-                turns: activeTurns,
-                currentQuestion: manualQuestion,
-                currentImage: jpegData,
-                onDeviceHints: onDeviceHints,
-                locale: speechService.selectedLocale,
-                apiKey: MultimodalConfig.apiKey
-            )
+    private var speechFeedbackCard: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "mic.fill")
+                .font(.subheadline)
+                .foregroundStyle(viewModel.speechService.status.isListening ? .red : .blue)
             
-            await MainActor.run {
-                self.isRequestInFlight = false
-                self.stopThinkingHaptics()
-                self.lastMultimodalStatus = result.status
-                self.lastGeminiLatencyMs = result.latencyMs
-                self.lastPerceivedTurnaroundMs = Date().timeIntervalSince(requestStartTime) * 1000.0
-                self.lastAnalyzedPayloadBytes = jpegData.count
-                
-                if result.status == .success && !result.text.isEmpty {
-                    print("[USER] Gemini SUCCESS (\(Int(result.latencyMs))ms) - Response length: \(result.text.count)")
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    
-                    let synthesized = self.interpretationService.interpret(
-                        recognition: self.cameraManager.latestResult,
-                        multimodal: result,
-                        locale: self.speechService.selectedLocale
-                    )
-                    
-                    let newTurn = ConversationTurn(
-                        question: manualQuestion,
-                        answer: synthesized,
-                        rawAIResponse: result.text
-                    )
-                    
-                    if var thread = self.activeConversationThread, !thread.isExpired() {
-                        thread.appendTurn(newTurn)
-                        self.activeConversationThread = thread
-                    } else {
-                        var newThread = SceneConversationThread(anchorScene: snapshotReference)
-                        newThread.appendTurn(newTurn)
-                        self.activeConversationThread = newThread
-                    }
-                    
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        self.currentAIAnswer = synthesized
-                        self.lastAnalyzedScene = snapshotReference
-                        self.interactionState = .answered
-                    }
-                    
-                    AccessibilityVoiceService.shared.speak(
-                        "\(synthesized.primaryHeadline). \(synthesized.detailedDescription ?? "")",
-                        languageCode: self.speechService.selectedLocale.identifier
-                    )
-                } else {
-                    handleGeminiFailure(result: result, sceneRef: snapshotReference)
-                }
+            Text(speechFeedbackText)
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundStyle(.white)
+                .lineLimit(2)
+            
+            Spacer()
+            
+            if viewModel.speechService.status.isListening {
+                Circle()
+                    .fill(Color.red)
+                    .frame(width: 8, height: 8)
             }
         }
-    }
-    
-    // MARK: - End-to-End Voice Query Action
-    
-    private func startSpeechInput() {
-        guard !isRequestInFlight else { return }
-        
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        
-        // Synchronously snapshot current camera frame
-        if let jpegData = cameraManager.captureCurrentFrameJPEG() {
-            self.pendingVoiceSnapshot = jpegData
-            self.pendingVoiceReference = AnalyzedSceneReference(
-                dominantClassification: cameraManager.latestResult.topClassification?.identifier,
-                ocrTextFingerprint: cameraManager.latestResult.combinedText,
-                featurePrint: cameraManager.latestResult.featurePrint,
-                analyzedAt: Date()
-            )
-            print("[VOICE] Captured frame snapshot (\(jpegData.count) bytes).")
-        } else {
-            print("[VOICE] Warning: Frame snapshot capture failed.")
-        }
-        
-        withAnimation(.easeInOut(duration: 0.15)) {
-            showSpeechCard = true
-            interactionState = .listening
-        }
-        
-        let listeningMsg = speechService.isIndonesian ? "Mendengarkan." : "Listening."
-        AccessibilityVoiceService.shared.speak(listeningMsg, languageCode: speechService.selectedLocale.identifier)
-        
-        Task {
-            let granted = await speechService.requestPermissions()
-            if granted {
-                speechService.startRecording()
-            } else {
-                await MainActor.run {
-                    self.microphoneAvailable = false
-                    self.interactionState = .idle
-                }
-            }
-        }
-    }
-    
-    private func stopSpeechInput() {
-        guard isHoldingSpeechButton == false else { return }
-        
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        
-        Task {
-            // Await on-device speech transcription finalization (< 250ms)
-            let rawQuestion = await speechService.stopRecordingAndGetTranscript()
-            await MainActor.run {
-                self.submitQuestion(
-                    rawQuestion,
-                    capturedSnapshot: self.pendingVoiceSnapshot,
-                    sceneReference: self.pendingVoiceReference,
-                    triggerType: "Voice"
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.black.opacity(0.8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.white.opacity(0.15), lineWidth: 1)
                 )
-            }
-        }
-    }
-    
-    /// Unified submission pipeline for questions originating from SpeechService or temporary typed test input.
-    private func submitQuestion(
-        _ rawQuestion: String?,
-        capturedSnapshot: Data? = nil,
-        sceneReference: AnalyzedSceneReference? = nil,
-        triggerType: String = "Voice"
-    ) {
-        guard !isRequestInFlight else { return }
-        
-        guard let rawQuestion = rawQuestion,
-              !rawQuestion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            print("[\(triggerType.uppercased())] Question empty or cancelled. Zero Gemini calls made.")
-            self.pendingVoiceSnapshot = nil
-            self.pendingVoiceReference = nil
-            self.interactionState = .idle
-            let emptyMsg = speechService.isIndonesian
-                ? "Tidak mendengar pertanyaan. Tahan dan tanya lagi."
-                : "I didn't hear a question. Hold and ask again."
-            self.lastSpokenQuestion = emptyMsg
-            AccessibilityVoiceService.shared.speak(emptyMsg, languageCode: speechService.selectedLocale.identifier)
-            return
-        }
-        
-        let question = rawQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        // Check API Key
-        guard MultimodalConfig.hasConfiguredKey else {
-            showSettingsSheet = true
-            self.pendingVoiceSnapshot = nil
-            self.pendingVoiceReference = nil
-            self.interactionState = .idle
-            return
-        }
-        
-        // Obtain captured snapshot (or fallback to live frame)
-        guard let jpegData = capturedSnapshot ?? self.pendingVoiceSnapshot ?? self.cameraManager.captureCurrentFrameJPEG() else {
-            print("[\(triggerType.uppercased())] Frame data missing for query.")
-            self.interactionState = .idle
-            return
-        }
-        
-        let sceneRef = sceneReference ?? self.pendingVoiceReference ?? AnalyzedSceneReference(
-            dominantClassification: self.cameraManager.latestResult.topClassification?.identifier,
-            ocrTextFingerprint: self.cameraManager.latestResult.combinedText,
-            featurePrint: self.cameraManager.latestResult.featurePrint,
-            analyzedAt: Date()
         )
-        
-        self.lastSpokenQuestion = question
-        self.isRequestInFlight = true
-        self.isProcessingVoiceQuery = (triggerType == "Voice")
-        self.lastTriggerType = triggerType
-        self.lastRequestTimestamp = Date()
-        self.interactionState = .thinking
-        startThinkingHaptics()
-        
-        let analyzingQuestionMsg = speechService.isIndonesian
-            ? "Menganalisis pertanyaan Anda."
-            : "Analyzing your question."
-        AccessibilityVoiceService.shared.speak(analyzingQuestionMsg, languageCode: speechService.selectedLocale.identifier)
-        
-        let requestStartTime = Date()
-        
-        let activeTurns: [ConversationTurn]
-        if let currentThread = self.activeConversationThread, !currentThread.isExpired() {
-            activeTurns = currentThread.turns
-            print("[\(triggerType.uppercased())] Continuing active scene conversation thread (\(activeTurns.count) prior turns)...")
-        } else {
-            activeTurns = []
-            print("[\(triggerType.uppercased())] Starting new scene conversation thread...")
-        }
-        
-        var onDeviceHints: [String] = []
-        if !cameraManager.latestResult.recognizedTexts.isEmpty {
-            let topTexts = cameraManager.latestResult.recognizedTexts.prefix(6).map { "\"\($0.text)\"" }
-            onDeviceHints.append("Visible text detected on-device: \(topTexts.joined(separator: ", "))")
-        }
-        if let topClass = cameraManager.latestResult.topClassification {
-            onDeviceHints.append("Visual category: \(topClass.identifier)")
-        }
-        
-        print("[\(triggerType.uppercased())] Sending Gemini multi-turn query for: \"\(question)\" (\(jpegData.count) bytes, \(activeTurns.count) prior turns) in locale \(speechService.selectedLocale.identifier)...")
-        
-        Task {
-            let result = await multimodalService.analyzeMultiTurn(
-                turns: activeTurns,
-                currentQuestion: question,
-                currentImage: jpegData,
-                onDeviceHints: onDeviceHints,
-                locale: speechService.selectedLocale,
-                apiKey: MultimodalConfig.apiKey
-            )
-            
-            await MainActor.run {
-                self.isRequestInFlight = false
-                self.isProcessingVoiceQuery = false
-                self.pendingVoiceSnapshot = nil
-                self.pendingVoiceReference = nil
-                self.stopThinkingHaptics()
-                
-                self.lastMultimodalStatus = result.status
-                self.lastGeminiLatencyMs = result.latencyMs
-                self.lastPerceivedTurnaroundMs = Date().timeIntervalSince(requestStartTime) * 1000.0
-                self.lastAnalyzedPayloadBytes = jpegData.count
-                
-                if result.status == .success && !result.text.isEmpty {
-                    print("[\(triggerType.uppercased())] Gemini SUCCESS (\(Int(result.latencyMs))ms) - Response length: \(result.text.count)")
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    
-                    let synthesized = self.interpretationService.interpret(
-                        recognition: self.cameraManager.latestResult,
-                        multimodal: result,
-                        locale: self.speechService.selectedLocale
-                    )
-                    
-                    let newTurn = ConversationTurn(
-                        question: question,
-                        answer: synthesized,
-                        rawAIResponse: result.text
-                    )
-                    
-                    if var thread = self.activeConversationThread, !thread.isExpired() {
-                        thread.appendTurn(newTurn)
-                        self.activeConversationThread = thread
-                    } else {
-                        var newThread = SceneConversationThread(anchorScene: sceneRef)
-                        newThread.appendTurn(newTurn)
-                        self.activeConversationThread = newThread
-                    }
-                    
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        self.currentAIAnswer = synthesized
-                        self.lastAnalyzedScene = sceneRef
-                        self.interactionState = .answered
-                    }
-                    
-                    AccessibilityVoiceService.shared.speak(
-                        "\(synthesized.primaryHeadline). \(synthesized.detailedDescription ?? "")",
-                        languageCode: self.speechService.selectedLocale.identifier
-                    )
-                } else {
-                    handleGeminiFailure(result: result, sceneRef: sceneRef)
-                }
-            }
-        }
+        .padding(.horizontal, 16)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(speechFeedbackAccessibilityLabel)
     }
     
-    // MARK: - Gemini Failure Handler (Shared)
+    private var speechFeedbackText: String {
+        if viewModel.speechService.status.isListening {
+            let partial = viewModel.speechService.partialTranscript
+            return partial.isEmpty ? (viewModel.speechService.isIndonesian ? "Mendengarkan…" : "Listening…") : "\"\(partial)\""
+        } else if let q = viewModel.lastSpokenQuestion {
+            return "\"\(q)\""
+        }
+        return viewModel.speechService.isIndonesian ? "Memproses…" : "Processing…"
+    }
     
-    private func handleGeminiFailure(result: MultimodalService.MultimodalResult, sceneRef: AnalyzedSceneReference) {
-        stopThinkingHaptics()
-        UINotificationFeedbackGenerator().notificationOccurred(.error)
-        
-        let failureReason = result.status.displayTelemetryTitle
-        print("[AI] Request failed (\(failureReason)). Showing failure notification.")
-        
-        let userMessage: String
-        if speechService.isIndonesian {
-            if result.status.isRateLimited {
-                userMessage = "Layanan sedang sibuk. Silakan coba sebentar lagi."
-            } else if case .networkError = result.status {
-                userMessage = "Gagal terhubung. Periksa koneksi internet Anda dan coba lagi."
-            } else if case .authenticationError = result.status {
-                userMessage = "Masalah kunci API. Periksa kunci Anda di Pengaturan."
-            } else {
-                userMessage = "Tidak dapat menentukan jawaban dari gambar ini. Coba tanya lagi atau ubah posisi kamera."
-            }
-        } else {
-            if result.status.isRateLimited {
-                userMessage = "The service is temporarily busy. Please try again in a moment."
-            } else if case .networkError = result.status {
-                userMessage = "I couldn't connect. Check your internet connection and try again."
-            } else if case .authenticationError = result.status {
-                userMessage = "API key issue. Check your key in Settings."
-            } else {
-                userMessage = "I couldn't determine an answer from this image. Try asking again or repositioning the camera."
-            }
+    private var speechFeedbackAccessibilityLabel: String {
+        if viewModel.speechService.status.isListening {
+            let partial = viewModel.speechService.partialTranscript
+            return partial.isEmpty ? "Listening for question" : "Question: \(partial)"
+        } else if let q = viewModel.lastSpokenQuestion {
+            return "Asked: \(q)"
         }
-        
-        // If there is no previous AI answer, update liveVisionInterpretation to display the helpful error note
-        if currentAIAnswer == nil {
-            let localFallback = self.interpretationService.interpret(
-                recognition: self.cameraManager.latestResult,
-                locale: self.speechService.selectedLocale
-            )
-            self.liveVisionInterpretation = InterpretationResult(
-                primaryHeadline: localFallback.primaryHeadline,
-                detailedDescription: localFallback.detailedDescription,
-                confidence: localFallback.confidence,
-                cautionaryNote: userMessage,
-                contributingSources: localFallback.contributingSources,
-                isSpecificIdentification: localFallback.isSpecificIdentification,
-                timestamp: Date()
-            )
-        }
-        
-        withAnimation(.easeInOut(duration: 0.25)) {
-            self.interactionState = .error(userMessage)
-        }
-        
-        AccessibilityVoiceService.shared.speak(userMessage, languageCode: speechService.selectedLocale.identifier)
-        
-        // Reset to idle after brief error display (persistent AI answer remains intact)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-            if case .error = self.interactionState {
-                self.interactionState = .idle
-            }
-        }
+        return "Voice processing"
     }
     
     // MARK: - Bottom Interaction Area
     
     private var bottomInteractionArea: some View {
         Group {
-            if microphoneAvailable {
+            if viewModel.microphoneAvailable {
                 voiceInteractionArea
             } else {
                 analyzeFallbackButton
@@ -777,7 +227,7 @@ struct CameraView: View {
             VStack(spacing: 8) {
                 // State-dependent icon
                 Group {
-                    switch interactionState {
+                    switch viewModel.interactionState {
                     case .listening:
                         Image(systemName: "waveform")
                             .font(.system(size: 28, weight: .medium))
@@ -802,8 +252,8 @@ struct CameraView: View {
                     .foregroundStyle(.white.opacity(0.9))
                 
                 // Hint text (idle only)
-                if case .idle = interactionState {
-                    Text(currentAIAnswer != nil ? "\"What is it used for?\"" : "\"What is this?\"")
+                if case .idle = viewModel.interactionState {
+                    Text(viewModel.currentAIAnswer != nil ? "\"What is it used for?\"" : "\"What is this?\"")
                         .font(.caption)
                         .foregroundStyle(.white.opacity(0.5))
                         .italic()
@@ -816,34 +266,34 @@ struct CameraView: View {
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in
-                    if !isHoldingSpeechButton && !isRequestInFlight {
-                        isHoldingSpeechButton = true
-                        startSpeechInput()
+                    if !viewModel.isHoldingSpeechButton && !viewModel.isRequestInFlight {
+                        viewModel.isHoldingSpeechButton = true
+                        viewModel.startSpeechInput()
                     }
                 }
                 .onEnded { _ in
-                    if isHoldingSpeechButton {
-                        isHoldingSpeechButton = false
-                        stopSpeechInput()
+                    if viewModel.isHoldingSpeechButton {
+                        viewModel.isHoldingSpeechButton = false
+                        viewModel.stopSpeechInput()
                     }
                 }
         )
-        .disabled(isRequestInFlight && !isHoldingSpeechButton)
+        .disabled(viewModel.isRequestInFlight && !viewModel.isHoldingSpeechButton)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(voiceAreaAccessibilityLabel)
         .accessibilityValue(voiceAreaAccessibilityValue)
         .accessibilityHint(voiceAreaAccessibilityHint)
         .accessibilityAddTraits(.isButton)
         .accessibilityAction(.default) {
-            handleVoiceAreaAccessibilityAction()
+            viewModel.handleVoiceAreaAccessibilityAction()
         }
-        .accessibilityActionIf(named: "Repeat Answer", condition: currentAIAnswer != nil) {
-            repeatLastAnswer()
+        .accessibilityActionIf(named: "Repeat Answer", condition: viewModel.currentAIAnswer != nil) {
+            viewModel.repeatLastAnswer()
         }
     }
     
     private var voiceAreaBackgroundColor: Color {
-        switch interactionState {
+        switch viewModel.interactionState {
         case .listening:
             return Color.red.opacity(0.75)
         case .thinking:
@@ -856,7 +306,7 @@ struct CameraView: View {
     }
     
     private var voiceAreaBorderColor: Color {
-        switch interactionState {
+        switch viewModel.interactionState {
         case .listening:
             return Color.red.opacity(0.9)
         case .thinking:
@@ -869,9 +319,9 @@ struct CameraView: View {
     }
     
     private var voiceAreaLabel: String {
-        switch interactionState {
+        switch viewModel.interactionState {
         case .idle, .answered:
-            return currentAIAnswer != nil ? "Hold and ask another question" : "Hold and ask a question"
+            return viewModel.currentAIAnswer != nil ? "Hold and ask another question" : "Hold and ask a question"
         case .listening:
             return "Listening…"
         case .thinking:
@@ -882,7 +332,7 @@ struct CameraView: View {
     }
     
     private var voiceAreaAccessibilityLabel: String {
-        switch interactionState {
+        switch viewModel.interactionState {
         case .listening:
             return "Recording question"
         case .thinking:
@@ -892,12 +342,12 @@ struct CameraView: View {
         case .error:
             return "Try asking again"
         case .idle:
-            return currentAIAnswer != nil ? "Ask another question" : "Ask a question"
+            return viewModel.currentAIAnswer != nil ? "Ask another question" : "Ask a question"
         }
     }
     
     private var voiceAreaAccessibilityValue: String {
-        switch interactionState {
+        switch viewModel.interactionState {
         case .listening:
             return "Recording in progress"
         case .thinking:
@@ -912,7 +362,7 @@ struct CameraView: View {
     }
     
     private var voiceAreaAccessibilityHint: String {
-        switch interactionState {
+        switch viewModel.interactionState {
         case .listening:
             return "Double-tap to stop recording and submit your question."
         case .thinking:
@@ -926,217 +376,43 @@ struct CameraView: View {
         }
     }
     
-    private func handleVoiceAreaAccessibilityAction() {
-        if isHoldingSpeechButton || interactionState == .listening {
-            isHoldingSpeechButton = false
-            stopSpeechInput()
-        } else if !isRequestInFlight {
-            isHoldingSpeechButton = true
-            startSpeechInput()
-        }
-    }
-    
-    private func repeatLastAnswer() {
-        guard let answer = currentAIAnswer else { return }
-        let haptic = UIImpactFeedbackGenerator(style: .medium)
-        haptic.impactOccurred()
-        AccessibilityVoiceService.shared.repeatAnswer(
-            headline: answer.primaryHeadline,
-            description: answer.detailedDescription,
-            languageCode: speechService.selectedLocale.identifier
-        )
-    }
-    
-    // MARK: - Magic Tap & State Haptic Coordination (T012)
-    
-    private func handleMagicTapAccessibilityAction() {
-        if currentAIAnswer != nil {
-            repeatLastAnswer()
-        } else {
-            handleVoiceAreaAccessibilityAction()
-        }
-    }
-    
-    private func handleInteractionStateHaptics(_ state: InteractionState) {
-        switch state {
-        case .thinking:
-            thinkingHapticTask?.cancel()
-            thinkingHapticTask = Task { @MainActor in
-                let generator = UIImpactFeedbackGenerator(style: .light)
-                generator.prepare()
-                while !Task.isCancelled {
-                    try? await Task.sleep(nanoseconds: 800_000_000)
-                    if Task.isCancelled { break }
-                    generator.impactOccurred(intensity: 0.65)
-                }
-            }
-        case .answered:
-            thinkingHapticTask?.cancel()
-            thinkingHapticTask = nil
-            let successFeedback = UINotificationFeedbackGenerator()
-            successFeedback.notificationOccurred(.success)
-        case .error:
-            thinkingHapticTask?.cancel()
-            thinkingHapticTask = nil
-            let errorFeedback = UINotificationFeedbackGenerator()
-            errorFeedback.notificationOccurred(.error)
-        case .idle, .listening:
-            thinkingHapticTask?.cancel()
-            thinkingHapticTask = nil
-        }
-    }
-    
     // MARK: - Analyze Fallback Button (Microphone Denied)
     
     private var analyzeFallbackButton: some View {
         Button {
-            triggerManualAnalysis()
+            viewModel.triggerManualAnalysis()
         } label: {
             HStack(spacing: 8) {
-                if isRequestInFlight {
+                if viewModel.isRequestInFlight {
                     ProgressView()
                         .scaleEffect(0.9)
                         .tint(.white)
                     Text("Analyzing…")
-                        .font(.title3)
-                        .fontWeight(.semibold)
+                        .font(.headline)
+                        .foregroundStyle(.white)
                 } else {
                     Image(systemName: "sparkles")
-                        .font(.system(size: 20, weight: .semibold))
+                        .font(.headline)
+                        .foregroundStyle(.yellow)
                     Text("Analyze")
-                        .font(.title3)
+                        .font(.headline)
                         .fontWeight(.semibold)
+                        .foregroundStyle(.white)
                 }
             }
-            .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
-            .frame(height: 64)
+            .frame(height: 52)
             .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(isRequestInFlight ? Color.gray.opacity(0.5) : Color.blue)
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(Color.blue.opacity(0.85))
             )
         }
-        .disabled(isRequestInFlight)
-        .accessibilityLabel(isRequestInFlight ? "Analyzing image" : "Analyze what the camera sees")
-        .accessibilityHint("Takes a photo and uses AI to identify and describe what is visible.")
+        .disabled(viewModel.isRequestInFlight)
+        .accessibilityLabel(viewModel.isRequestInFlight ? "Analyzing image" : "Analyze what the camera sees")
+        .accessibilityHint("Captures the current camera view and performs detailed AI analysis.")
     }
     
-    // MARK: - Speech Feedback Card
-    
-    private var speechFeedbackCard: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(speechStatusDotColor)
-                .frame(width: 8, height: 8)
-            
-            Text(speechCardText)
-                .font(.subheadline)
-                .fontWeight(.medium)
-                .foregroundStyle(.white)
-                .lineLimit(2)
-            
-            Spacer()
-            
-            // Dismiss button (only when not actively listening/processing)
-            if !speechService.status.isListening && !isProcessingVoiceQuery {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        showSpeechCard = false
-                        lastSpokenQuestion = nil
-                        speechService.finalTranscript = ""
-                    }
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.6))
-                        .padding(6)
-                }
-                .accessibilityLabel("Dismiss question")
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.black.opacity(0.6))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.white.opacity(0.15), lineWidth: 1)
-                )
-        )
-        .padding(.horizontal, 16)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Your question: \(speechCardText)")
-    }
-    
-    private var speechStatusDotColor: Color {
-        if speechService.status.isListening {
-            return .red
-        } else if isProcessingVoiceQuery {
-            return .blue
-        } else {
-            return .green
-        }
-    }
-    
-    private var speechCardText: String {
-        if speechService.status.isListening {
-            return speechService.partialTranscript.isEmpty ? "Listening…" : "\"\(speechService.partialTranscript)\""
-        } else if isProcessingVoiceQuery, let q = lastSpokenQuestion {
-            return "\"\(q)\""
-        } else if let q = lastSpokenQuestion {
-            return "You asked: \"\(q)\""
-        } else if !speechService.finalTranscript.isEmpty {
-            return "\"\(speechService.finalTranscript)\""
-        } else if case .unauthorized(let msg) = speechService.status {
-            return msg
-        } else if case .unavailable(let msg) = speechService.status {
-            return msg
-        } else if case .failed(let msg) = speechService.status {
-            return msg
-        } else {
-            return "Hold to ask a question."
-        }
-    }
-    
-    // MARK: - State Reset Helper
-    
-    private func resetSessionState() {
-        stopThinkingHaptics()
-        sceneDivergenceStartTime = nil
-        lastAnalyzedScene = nil
-        currentAIAnswer = nil
-        liveVisionInterpretation = .initial
-        isRequestInFlight = false
-        isProcessingVoiceQuery = false
-        pendingVoiceSnapshot = nil
-        pendingVoiceReference = nil
-        interactionState = .idle
-        interpretationService.resetStability()
-    }
-    
-    // MARK: - Thinking State Haptic Heartbeat
-    
-    private func startThinkingHaptics() {
-        stopThinkingHaptics()
-        thinkingHapticTask = Task { @MainActor in
-            let generator = UIImpactFeedbackGenerator(style: .soft)
-            generator.prepare()
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 1_200_000_000) // 1.2s interval
-                if Task.isCancelled { break }
-                generator.impactOccurred(intensity: 0.6)
-                generator.prepare()
-            }
-        }
-    }
-    
-    private func stopThinkingHaptics() {
-        thinkingHapticTask?.cancel()
-        thinkingHapticTask = nil
-    }
-    
-    // MARK: - Simplified Interpretation Card
+    // MARK: - Interpretation Card
     
     private func interpretationCard(interpretation: InterpretationResult) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1161,9 +437,9 @@ struct CameraView: View {
                 Spacer()
                 
                 // Repeat Answer Button (Visible when an AI answer exists)
-                if currentAIAnswer != nil {
+                if viewModel.currentAIAnswer != nil {
                     Button {
-                        repeatLastAnswer()
+                        viewModel.repeatLastAnswer()
                     } label: {
                         Image(systemName: "speaker.wave.2.fill")
                             .font(.system(size: 15, weight: .semibold))
@@ -1172,8 +448,8 @@ struct CameraView: View {
                             .background(Color.white.opacity(0.18))
                             .clipShape(Circle())
                     }
-                    .accessibilityLabel(speechService.isIndonesian ? "Ulangi jawaban" : "Repeat answer")
-                    .accessibilityHint(speechService.isIndonesian ? "Ketuk dua kali untuk mendengarkan kembali jawaban ini." : "Double-tap to hear this answer again.")
+                    .accessibilityLabel(viewModel.speechService.isIndonesian ? "Ulangi jawaban" : "Repeat answer")
+                    .accessibilityHint(viewModel.speechService.isIndonesian ? "Ketuk dua kali untuk mendengarkan kembali jawaban ini." : "Double-tap to hear this answer again.")
                 }
             }
             
@@ -1203,11 +479,11 @@ struct CameraView: View {
             }
             
             // Developer Telemetry (hidden by default, toggled from Settings)
-            if showRawTelemetry {
+            if viewModel.showRawTelemetry {
                 Divider()
                     .background(Color.white.opacity(0.2))
                     .padding(.top, 4)
-                rawTelemetrySection(result: cameraManager.latestResult)
+                rawTelemetrySection(result: viewModel.cameraManager.latestResult)
             }
         }
         .padding(16)
@@ -1223,12 +499,12 @@ struct CameraView: View {
         .padding(.horizontal, 16)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(interpretationAccessibilityLabel(interpretation))
-        .accessibilityActionIf(named: "Repeat Answer", condition: currentAIAnswer != nil) {
-            repeatLastAnswer()
+        .accessibilityActionIf(named: "Repeat Answer", condition: viewModel.currentAIAnswer != nil) {
+            viewModel.repeatLastAnswer()
         }
     }
     
-    // MARK: - Confidence Helpers (Simplified)
+    // MARK: - Confidence Helpers
     
     private func confidenceColor(_ confidence: EvidenceConfidence) -> Color {
         switch confidence {
@@ -1245,8 +521,8 @@ struct CameraView: View {
         case .strong: return "High confidence"
         case .moderate: return "Moderate confidence"
         case .weak: return "Low confidence"
-        case .conflicting: return "Conflicting information"
-        case .insufficient: return ""
+        case .conflicting: return "Conflicting signals"
+        case .insufficient: return "Insufficient data"
         }
     }
     
@@ -1275,13 +551,13 @@ struct CameraView: View {
                     .fontWeight(.bold)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text("Trigger: \(lastTriggerType)")
+                Text("Trigger: \(viewModel.lastTriggerType)")
                     .font(.caption2)
                     .fontWeight(.bold)
-                    .foregroundStyle(lastTriggerType == "Voice" ? .purple : .blue)
+                    .foregroundStyle(viewModel.lastTriggerType == "Voice" ? .purple : .blue)
             }
             
-            if let q = lastSpokenQuestion {
+            if let q = viewModel.lastSpokenQuestion {
                 HStack {
                     Text("Spoken Question:")
                         .font(.caption2)
@@ -1299,14 +575,14 @@ struct CameraView: View {
                     .foregroundStyle(.secondary)
                 Text(speechStatusTelemetryTitle)
                     .font(.caption2)
-                    .foregroundStyle(speechService.status.isListening ? .red : .white)
+                    .foregroundStyle(viewModel.speechService.status.isListening ? .red : .white)
                 
                 Spacer()
                 
                 Text("Speech Duration:")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                Text(speechService.lastRecordingDuration > 0 ? "\(String(format: "%.1f", speechService.lastRecordingDuration))s" : "N/A")
+                Text(viewModel.speechService.lastRecordingDuration > 0 ? "\(String(format: "%.1f", viewModel.speechService.lastRecordingDuration))s" : "N/A")
                     .font(.caption2)
                     .foregroundStyle(.white)
             }
@@ -1324,7 +600,7 @@ struct CameraView: View {
                 Text("Gemini Latency:")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                Text(lastGeminiLatencyMs > 0 ? "\(Int(lastGeminiLatencyMs))ms" : "N/A")
+                Text(viewModel.lastGeminiLatencyMs > 0 ? "\(Int(viewModel.lastGeminiLatencyMs))ms" : "N/A")
                     .font(.caption2)
                     .foregroundStyle(.white)
             }
@@ -1333,7 +609,7 @@ struct CameraView: View {
                 Text("Total Turnaround:")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                Text(lastPerceivedTurnaroundMs > 0 ? "\(Int(lastPerceivedTurnaroundMs))ms" : "N/A")
+                Text(viewModel.lastPerceivedTurnaroundMs > 0 ? "\(Int(viewModel.lastPerceivedTurnaroundMs))ms" : "N/A")
                     .font(.caption2)
                     .foregroundStyle(.white)
                 
@@ -1342,7 +618,7 @@ struct CameraView: View {
                 Text("Snapshot Size:")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                Text(lastAnalyzedPayloadBytes > 0 ? "\(lastAnalyzedPayloadBytes / 1024) KB" : "N/A")
+                Text(viewModel.lastAnalyzedPayloadBytes > 0 ? "\(viewModel.lastAnalyzedPayloadBytes / 1024) KB" : "N/A")
                     .font(.caption2)
                     .foregroundStyle(.white)
             }
@@ -1351,9 +627,9 @@ struct CameraView: View {
                 Text("Multimodal Status:")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                Text(lastMultimodalStatus.displayTelemetryTitle)
+                Text(viewModel.lastMultimodalStatus.displayTelemetryTitle)
                     .font(.caption2)
-                    .foregroundStyle(lastMultimodalStatus.isRateLimited ? .orange : .white)
+                    .foregroundStyle(viewModel.lastMultimodalStatus.isRateLimited ? .orange : .white)
             }
             
             HStack {
@@ -1379,18 +655,18 @@ struct CameraView: View {
                 Text("Active Thread:")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                Text(activeConversationThread != nil ? "Active (\(activeConversationThread!.turnCount) turns)" : "None (New Scene)")
+                Text(viewModel.activeConversationThread != nil ? "Active (\(viewModel.activeConversationThread!.turnCount) turns)" : "None (New Scene)")
                     .font(.caption2)
-                    .foregroundStyle(activeConversationThread != nil ? .green : .white)
+                    .foregroundStyle(viewModel.activeConversationThread != nil ? .green : .white)
                 
                 Spacer()
                 
                 Text("Divergence:")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                Text(String(format: "%.2f", lastDivergenceScore))
+                Text(String(format: "%.2f", viewModel.lastDivergenceScore))
                     .font(.caption2)
-                    .foregroundStyle(lastDivergenceScore >= SceneStabilityConfiguration.divergenceThreshold ? .orange : .white)
+                    .foregroundStyle(viewModel.lastDivergenceScore >= SceneStabilityConfiguration.divergenceThreshold ? .orange : .white)
             }
             
             HStack {
@@ -1398,7 +674,7 @@ struct CameraView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 HStack(spacing: 4) {
-                    ForEach(displayedInterpretation.contributingSources) { source in
+                    ForEach(viewModel.displayedInterpretation.contributingSources) { source in
                         Text(source.rawValue)
                             .font(.system(size: 9, weight: .bold))
                             .padding(.horizontal, 5)
@@ -1414,7 +690,7 @@ struct CameraView: View {
                 Text("Confidence:")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                Text(displayedInterpretation.confidence.rawValue)
+                Text(viewModel.displayedInterpretation.confidence.rawValue)
                     .font(.caption2)
                     .foregroundStyle(.white)
                 
@@ -1423,15 +699,15 @@ struct CameraView: View {
                 Text("Mic Available:")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                Text(microphoneAvailable ? "Yes" : "No (Fallback)")
+                Text(viewModel.microphoneAvailable ? "Yes" : "No (Fallback)")
                     .font(.caption2)
-                    .foregroundStyle(microphoneAvailable ? .green : .orange)
+                    .foregroundStyle(viewModel.microphoneAvailable ? .green : .orange)
             }
         }
     }
     
     private var speechStatusTelemetryTitle: String {
-        switch speechService.status {
+        switch viewModel.speechService.status {
         case .idle: return "Idle"
         case .listening: return "Listening (PCM Tap Active)"
         case .finalizing: return "Finalizing"

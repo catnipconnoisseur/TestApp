@@ -22,7 +22,7 @@ This file tracks the evolving high-level roadmap for the 10-day Act Phase challe
 | **T010** | **Create ML Feasibility & Evaluation** | `Complete` | Evaluate custom model need vs built-in, comparative matrix, and architectural decision | T009 |
 | **T011** | **Field Usability Validation & Multi-Turn Tuning** | `Complete` | Physical device validation of conversational memory, Screen Curtain audit, and Action Button launch | T010 |
 | **T012** | **Repeat Answer & Tactile Thinking Haptics** | `Complete` | Magic Tap two-finger double-tap answer replay, visible speaker replay button, and rhythmic thinking heartbeat | T011 |
-| **T013** | **Codebase Cleanliness & Architecture Polish** | `Planned` | Extract CameraViewModel, remove temporary test bar, and code structure cleanup | T012 |
+| **T013** | **Codebase Cleanliness & Architecture Polish** | `Complete` | Extract CameraViewModel, remove temporary test bar, and code structure cleanup | T012 |
 
 ---
 
@@ -48,4 +48,5 @@ This file tracks the evolving high-level roadmap for the 10-day Act Phase challe
 - **2026-09-02**: T010 completed; Create ML feasibility evaluation, comparative matrix, dataset requirements, and D018 hybrid architecture decision.
 - **2026-09-02**: T011 completed; physical iPhone field usability validation across conversational memory (Tests A–I), VoiceOver / Screen Curtain, and Action Button quick access.
 - **2026-09-02**: T012 completed; accessibility Magic Tap answer replay, visible replay button, and tactile heartbeat pulses during cloud reasoning.
+- **2026-09-02**: T013 completed; extracted CameraViewModel, decoupled SwiftUI layout from business logic, and eliminated temporary testing artifacts.
 

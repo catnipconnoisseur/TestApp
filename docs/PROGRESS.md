@@ -131,16 +131,22 @@
 
 ---
 
+### T013 — Codebase Cleanliness & Architecture Polish `Complete`
+- Extracted `CameraViewModel.swift` (`@MainActor final class CameraViewModel: ObservableObject`), encapsulating camera, speech, multimodal, and scene memory state
+- Decoupled SwiftUI presentation logic from business/orchestration logic, reducing `CameraView.swift` to ~810 lines
+- Eliminated `temporaryTestingInputBar` and legacy debug text input properties
+- Verified zero regression in full build verification
+
+---
+
 ## Current Status
 
-**T001–T012 Complete.** Ready for T013 codebase cleanup and architecture polish.
+**T001–T013 Complete.** The entire C4 challenge prototype is clean, robustly structured, and verified.
 
 ---
 
 ## Known Technical Debt
 
-1. **CameraView is ~1400 lines.** It handles all UI state, interaction logic, and view composition. If complexity grows, extracting a `CameraViewModel` may be justified.
-2. **Temporary test input bar** still exists in `CameraView` (lines ~103–105, 206–260). Labeled `TEMPORARY T007.2 TEST INPUT — REMOVE AFTER TESTING`.
-3. **`InterpretationService` is ~610 lines** with substantial currency validation logic. Could be extracted into a dedicated `CurrencyRecognitionService` if more currencies are added.
-4. **No unit tests.** Verification has been manual (build + on-device testing). Unit testing infrastructure is not set up.
-5. **`Secrets.swift` is gitignored** but referenced by `MultimodalConfig`. New developers must create this file manually.
+1. **`InterpretationService` is ~610 lines** with substantial currency validation logic. Could be extracted into a dedicated `CurrencyRecognitionService` if more currencies are added.
+2. **No unit tests.** Verification has been manual (build + on-device testing). Unit testing infrastructure is not set up.
+3. **`Secrets.swift` is gitignored** but referenced by `MultimodalConfig`. New developers must create this file manually.

@@ -48,7 +48,8 @@ TestApp/
 ### Camera/
 | File | Role | Size |
 |------|------|------|
-| `CameraView.swift` | Main live camera experience, voice interaction area, interpretation card, all UI state. The largest file (~1400 lines). | ~54 KB |
+| `CameraView.swift` | Clean SwiftUI view layout: viewfinder preview, top bar, speech card, interpretation card, and large 120pt voice area. (~810 lines). | ~30 KB |
+| `CameraViewModel.swift` | Central `@MainActor` ViewModel coordinating camera feed, on-device vision, speech recognition, Gemini multi-turn reasoning, scene divergence tracking, and thinking haptics. (~545 lines). | ~22 KB |
 | `CameraManager.swift` | AVFoundation `AVCaptureSession` lifecycle, frame delivery to VisionService, on-demand JPEG capture (1280px max). | ~7 KB |
 
 ### Home/
