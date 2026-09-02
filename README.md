@@ -58,7 +58,6 @@ TestApp/
 │
 ├── Features/
 │   ├── Home/
-│   │   ├── HomeView.swift
 │   │   └── WelcomeView.swift                  # 3-step onboarding with bottom interaction zone
 │   │
 │   ├── Camera/
@@ -85,7 +84,20 @@ TestApp/
 │   └── Settings/
 │       └── SettingsView.swift                 # Locale selection & developer diagnostics
 │
-├── AGENTS.md                                  # Persistent context & AI engineering guidelines
+├── docs/                                      # Persistent context documentation (uppercase)
+│   ├── STRUCTURE.md
+│   ├── CONVENTIONS.md
+│   ├── DECISIONS.md
+│   ├── PROGRESS.md
+│   ├── ACCESSIBILITY.md
+│   ├── AI-BEHAVIOR.md
+│   └── TESTING.md
+│
+├── tickets/                                   # Development ticket tracking
+│   ├── ROADMAP.md
+│   └── T001-BASELINE.md through T008...
+│
+├── AGENTS.md                                  # Root agent entry point & navigation
 └── README.md
 ```
 

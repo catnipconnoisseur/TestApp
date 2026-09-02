@@ -1,423 +1,104 @@
-# TestApp — AI Development Context & Architecture Guidelines
+# TestApp — AI Agent Entry Point
 
-> **This file is the persistent context and working instructions for AI coding agents contributing to TestApp.**
->
-> Before modifying the project, read this file first, then read the Markdown file for the current ticket.
+> **This is the root context file for AI coding agents.** Read this file first before making any changes.
 
 ---
 
-# 1. Project
+## Quick Orientation
 
-**Name:** TestApp *(temporary working name)*
-**Platform:** iOS
-**Framework:** SwiftUI
-**Language:** Swift
+**TestApp** is an iOS visual accessibility assistant built with SwiftUI, Apple Vision, on-device speech recognition, and Gemini multimodal AI. It helps people who are blind or visually impaired understand their physical surroundings by pointing their camera and asking spoken questions.
 
-TestApp is an Apple Developer Academy learning project exploring how Apple's visual technologies can help people who are blind or visually impaired access everyday visual information.
-
-The application is being developed as a **10-day Act Phase learning challenge**.
+**Core interaction model:** POINT → ASK → UNDERSTAND
 
 ---
 
-# 2. Learning Objective
+## Context Files & Navigation
 
-> Learn how to use Apple's **Vision framework and multimodal capabilities to analyze and interpret real-world visual input**, and explore how **Create ML could extend the solution when built-in capabilities are not sufficient**.
+Detailed project context is maintained in `docs/` and task tracking in `tickets/`. Read the relevant file before working on a specific area.
 
-Learning evidence:
-
-> An **iterated prototype that uses the camera to recognize or understand visual information and turn it into a useful response**.
-
-By the end of the challenge, the learner should be able to:
-
-* Implement a visual-processing pipeline.
-* Evaluate whether a technology is appropriate for a problem.
-* Identify limitations of built-in capabilities.
-* Explain how technology improves the interaction.
-* Iterate based on real-world testing.
-
----
-
-# 3. Problem
-
-People who are blind or visually impaired can encounter situations where visual information is useful but inaccessible.
-
-Examples include:
-
-* Identifying Indonesian banknotes.
-* Identifying local spices and ingredients.
-* Reading labels.
-* Understanding signs.
-* Identifying everyday visual information.
-
-The intended interaction is:
-
-**Camera → visual input → analysis → useful information → accessible response**
-
-The application should provide the **smallest useful piece of information**, rather than attempting to describe everything visible.
-
-Example:
-
-Instead of:
-
-> "I see a rectangular object with several colors and text..."
-
-Prefer:
-
-> "Rp50,000."
-
-or:
-
-> "This appears to be turmeric."
+| File | Contents |
+|------|----------|
+| [`docs/STRUCTURE.md`](docs/STRUCTURE.md) | File tree, feature modules, dependency graph |
+| [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md) | Code style, naming, architecture patterns, state management, git rules |
+| [`docs/DECISIONS.md`](docs/DECISIONS.md) | Key architectural & product decisions with rationale |
+| [`docs/PROGRESS.md`](docs/PROGRESS.md) | Completed milestones, planned work, current state, tech debt |
+| [`docs/ACCESSIBILITY.md`](docs/ACCESSIBILITY.md) | VoiceOver, announcements, audio, haptics, touch targets |
+| [`docs/AI-BEHAVIOR.md`](docs/AI-BEHAVIOR.md) | Gemini prompts, language directives, currency recognition, progressive disclosure |
+| [`docs/TESTING.md`](docs/TESTING.md) | Build commands, manual checklists, edge cases, debugging tips |
+| [`tickets/ROADMAP.md`](tickets/ROADMAP.md) | Development roadmap & completed/planned tickets |
 
 ---
 
-# 4. Research Conclusions
+## Critical Rules
 
-## Vision
+### Always
+- Read this file and relevant `docs/` files before making changes
+- Check `tickets/ROADMAP.md` for current ticket context and scope
+- Keep changes small and focused
+- Explain important technical decisions
+- Test before moving forward (build at minimum)
+- Preserve existing working functionality
+- Use `@Observable` macro (not `ObservableObject` / `@Published`)
+- Use plain text in AI responses (no Markdown syntax)
+- Route all spoken output through `AccessibilityVoiceService.shared`
 
-Vision is suited to specialized visual analysis such as:
-
-* Image classification
-* Text recognition
-* Object/feature analysis
-* Other structured computer-vision tasks
-
-## Multimodal Capabilities
-
-Multimodal capabilities can provide broader contextual interpretation of visual input.
-
-Conceptually:
-
-**Vision → specialized visual analysis**
-
-**Multimodal → contextual interpretation**
-
-They may eventually be combined.
-
-## Create ML
-
-Create ML is a possible extension, not a default requirement.
-
-The intended decision process is:
-
-**Built-in Vision → test → identify limitation → investigate multimodal → test → Create ML if justified**
-
-Do not introduce Create ML simply because the project involves AI/ML.
+### Never
+- Commit or push to Git without explicit user instruction
+- Include ticket numbers (T001, T002, etc.) in commit messages
+- Add third-party dependencies without approval
+- Add architecture layers (ViewModels, Coordinators) unless solving a real problem
+- Remove the LANGUAGE DIRECTIVE or PHYSICAL DEFORMATION RESILIENCE from Gemini prompts
+- Make the AI narrate unsolicited — the user is in control
+- Expose system internals (confidence levels, source badges) in user-facing UI
 
 ---
 
-# 5. Current Candidate Features
+## Git Rules
 
-## Indonesian Banknotes
-
-Potential interaction:
-
-**Camera → denomination recognition → accessible response**
-
-Example:
-
-> "Rp50,000."
-
-Banknote recognition is an established accessibility use case, so this is not being treated as an entirely novel problem. It is useful as a practical feature and recognition baseline.
-
-## Local Spices / Ingredients
-
-Potential interaction:
-
-**Camera → ingredient recognition → accessible response**
-
-Example:
-
-> "This appears to be turmeric."
-
-This is technically interesting because appearance may vary considerably depending on:
-
-* Lighting
-* Camera angle
-* Distance
-* Container
-* Preparation
-* Background
-* Similar-looking ingredients
-
-This makes spices particularly useful for investigating the limitations of visual recognition.
+- Single `main` branch
+- Conventional commits: `feat:`, `fix:`, `docs:`, `refactor:`, `chore:`
+- **STRICTLY NO ticket numbers** in any commit message
+- **Never auto-commit or auto-push** — wait for explicit user instruction
 
 ---
 
-# 6. Reliability Principle
+## Technology Stack
 
-The application must eventually be tested with imperfect real-world input.
-
-Examples:
-
-* Poor lighting
-* Blur
-* Different angles
-* Different distances
-* Partial views
-* Different containers
-* Different backgrounds
-* Similar-looking objects
-* Unfamiliar objects
-
-Important principle:
-
-> **A confidently incorrect answer can be worse than an uncertain answer.**
-
-Therefore, uncertainty and failure handling will eventually become part of the design.
+| Layer | Technology |
+|-------|-----------|
+| UI | SwiftUI |
+| Camera | AVFoundation (`AVCaptureSession`) |
+| Vision | Apple Vision (`VNClassifyImageRequest`, `VNRecognizeTextRequest`, `VNGenerateImageFeaturePrintRequest`) |
+| Speech Input | SFSpeechRecognizer (on-device) |
+| Speech Output | AVSpeechSynthesizer + UIAccessibility announcements |
+| AI Reasoning | Gemini 2.5 Flash (REST API via URLSession) |
+| Storage | UserDefaults (no CoreData, no CloudKit) |
+| Dependencies | Zero third-party packages |
 
 ---
 
-# 7. Technology Selection Principle
-
-Never implement a technology merely because it sounds impressive.
-
-Ask:
-
-> **Does this technology genuinely improve the solution?**
-
-For example:
-
-* If Vision is sufficient, do not unnecessarily introduce multimodal processing.
-* If multimodal processing is sufficient, do not unnecessarily train a custom model.
-* If Create ML does not meaningfully improve recognition, do not use it simply to demonstrate ML.
-
-The technology should serve the problem.
-
----
-
-# 8. Hybrid Ticket Development Workflow
-
-We use a **hybrid ticket development system**:
-* Maintain a rough roadmap of **6–10 upcoming tickets** in advance (in `Tickets/ROADMAP.md`) to provide clear direction.
-* Actively develop and fully specify **only one ticket at a time**.
-* Future tickets represent **intentions**, not rigid commitments.
-* The roadmap is adjusted dynamically based on what is learned from completed tickets.
-
-### Development Cycle
-
-**Roadmap → Ticket → Implement → Test → Learn → Adjust Roadmap → Next Ticket**
-
-### Ticket Statuses
-
-* `Planned` — identified as a possible future step (lightweight outline only)
-* `In Progress` — currently being actively planned, implemented, or tested
-* `Complete` — successfully implemented, tested, and documented
-* `Blocked` — cannot proceed because of a technical or research dependency
-* `Cancelled` — no longer useful based on discoveries (with reason documented)
-
----
-
-# 9. Working High-Level Roadmap
-
-| Ticket | Name | Status | Focus / Dependency |
-| :--- | :--- | :--- | :--- |
-| **T001** | **Baseline App Structure** | `Complete` | SwiftUI app lifecycle, baseline UI, VoiceOver |
-| **T002** | **Live Camera Preview** | `Complete` | AVFoundation camera feed, permission, visual input pipeline |
-| **T003** | **Vision Classification Baseline (Banknotes)** | `Complete` | Built-in Vision request on structured banknotes *(depends on T002)* |
-| **T004** | **Multimodal Understanding Baseline** | `Complete` | Compare Vision+OCR vs Multimodal contextual reasoning *(depends on T003)* |
-| **T005** | **Spoken Accessibility Output (Voice/Audio)** | `Planned` | Speech synthesis / accessible readout *(depends on T004)* |
-| **T006** | **Vision Exploration on Local Spices** | `Planned` | Test Vision limits on ambiguous items *(depends on T004)* |
-| **T007** | **Real-World Input & Uncertainty Handling** | `Planned` | Lighting/blur tests, confidence thresholds, fallback states *(depends on T006)* |
-| **T008** | **Create ML Feasibility & Evaluation** | `Planned` | Evaluate custom model need vs built-in, prepare final prototype *(depends on T007)* |
-
-*Note: Future tickets (T003+) will only be specified in detail when they become active and will be updated based on experimental findings.*
-
----
-
-# 10. Act Phase Cycles
-
-The Act Phase consists of five cycles:
-
-### Cycle 1
-Technology investigation and problem understanding.
-
-### Cycle 2
-Initial prototype.
-
-### Cycle 3
-Prototype iteration.
-
-### Cycle 4
-Further iteration and refinement.
-
-### Cycle 5
-Final iteration and preparation for evaluation.
-
-September 7–8 are reserved for evaluation.
-
----
-
-# 11. Architecture & Project Structure
-
-The project should use a **feature-oriented structure with lightweight architecture**.
-
-The architecture should grow according to actual complexity:
-> **Introduce a layer when the current code has a real problem that the layer solves.**
-
-Preferred structure:
-
-```text
-TestApp/
-│
-├── App/
-│   └── TestAppApp.swift
-│
-├── Features/
-│   ├── Home/
-│   │   ├── HomeView.swift
-│   │   └── HomeViewModel.swift        # Only when justified
-│   │
-│   ├── Camera/
-│   │   ├── CameraView.swift
-│   │   ├── CameraViewModel.swift      # Only when justified
-│   │   └── CameraManager.swift
-│   │
-│   ├── Recognition/
-│   │   ├── RecognitionView.swift
-│   │   ├── RecognitionViewModel.swift # Only when justified
-│   │   ├── VisionService.swift
-│   │   └── RecognitionResult.swift
-│   │
-│   └── Accessibility/
-│       └── SpeechManager.swift
-│
-├── Tickets/
-│   ├── ROADMAP.md
-│   ├── T001-Baseline.md
-│   ├── T002-Camera.md
-│   └── ...
-│
-├── Resources/
-│
-├── AGENTS.md
-└── README.md
-```
-
-### Architectural Layer Responsibilities
-* **Views**: UI layout, presentation, user interaction, connecting UI to state.
-* **ViewModels**: Used only when a view has meaningful state or presentation logic that justifies extraction from the view.
-* **Managers**: Own system-level resources or hardware lifecycles (e.g. `CameraManager` for AVFoundation).
-* **Services**: Encapsulate external or specialized domain processing (e.g. `VisionService` for Vision requests).
-* **Models**: Structured domain data (e.g. `RecognitionResult` for classification, confidence, uncertainty).
-
-Do not create empty folders prematurely. Only create a feature folder when that feature is actively implemented.
-
----
-
-# 12. Ticket Documentation Template
-
-Every ticket has its own Markdown file directly under `Tickets/` (`Tickets/TXXX-Name.md`).
-
-```markdown
-# TXXX — Ticket Name
-
-## Goal
-One or two sentences describing what this ticket accomplishes.
-
-## Why
-Why this ticket matters to the current learning/build progression.
-
-## Scope
-- What will be implemented
-- What will be tested
-
-## Out of Scope
-- Things intentionally postponed
-- Future technology/features
-
-## Tasks
-- [ ] Task 1
-- [ ] Task 2
-
-## Implementation Notes
-Brief notes about important technical decisions.
-
-## Validation
-- [ ] Test 1
-- [ ] Test 2
-
-## Result
-**Status:** In Progress / Complete / Blocked / Cancelled
-Briefly describe what actually happened.
-
-## Learning / Findings
-What did I learn from completing this ticket?
-
-## Changes from Plan
-Only include if something changed from the original plan.
-
-## Next Step
-One sentence describing the logical next ticket.
-```
-
----
-
-# 13. AI Working Rules
-
-When working on this project:
-
-## Always
-* Read `AGENTS.md` first.
-* Identify the current ticket.
-* Read that ticket's Markdown file.
-* Work only within the current ticket.
-* Keep changes small.
-* Explain important technical decisions.
-* Test before moving forward.
-* Record meaningful discoveries.
-* Preserve existing working functionality.
-
-## Never
-* Implement future tickets without permission.
-* Rewrite unrelated code.
-* Add architecture prematurely.
-* Add unnecessary dependencies.
-* Add AI/ML just because it sounds impressive.
-* Assume an API works without checking when current documentation matters.
-* Create large amounts of code without explaining the purpose.
-
----
-
-# 14. Git Workflow
-
-This is a **solo development project**. The Git workflow remains intentionally simple:
-
-```text
-Ticket → Implement → Test → Commit → main
-```
-
-### Branch Strategy
-* Use a single primary branch: `main`.
-* Do NOT create separate branches for every ticket by default.
-* Use a separate branch (e.g. `experiment/...`) only for risky architectural spikes or potentially breaking changes that need isolation.
-
-### Commit Format & Guidelines
-* **STRICT RULE: Zero Ticket Numbers:** NEVER include ticket numbers (e.g. `T001`, `T002`, `T003`, `T004`, `[T004]`, `T004:`, etc.) in ANY Git commit message or PR description, under ANY circumstances, even if a prompt or draft suggests a message containing one. ALWAYS strip out ticket identifiers and keep only the clear technical description (e.g. `feat: complete multimodal understanding baseline`, `Establish Vision classification baseline`).
-* Avoid vague messages like `update`, `fix`, or `changes`.
-
-### Commit & Push Permission Rule
-* **CRITICAL:** Do NOT automatically commit or push changes to Git/GitHub unless the user explicitly asks you to do so (e.g., "commit and push", "push this to GitHub").
-* Always wait for the user's explicit instruction before executing any `git commit` or `git push` commands.
-
-> **Rule:** One developer → one main branch → descriptive commits STRICTLY WITHOUT ticket numbers (no T001, T002, T003, T004, etc.) → commit/push ONLY when explicitly requested.
-
----
-
-# 15. Current Development State
-
-* **Active Ticket:** **T007 — Conversational Multimodal Interaction** `[In Progress]`
-* **Next Ready Ticket:** **T008 — Spoken Accessibility Output & Audio Feedback** `[Planned]`
-
----
-
-# 16. Source of Truth
+## Source of Truth
 
 When information conflicts:
-
 1. Current user instruction
-2. Current ticket file
-3. `AGENTS.md`
+2. This file (`AGENTS.md`)
+3. Relevant `docs/` or `tickets/` file
 4. Existing implementation
 
 The current user instruction always takes priority.
+
+---
+
+## Maintenance Rules for `docs/` & `tickets/`
+
+Update documentation when:
+- **`STRUCTURE.md`**: A file is added, removed, or moved
+- **`CONVENTIONS.md`**: A new pattern is established or an existing pattern changes
+- **`DECISIONS.md`**: A significant technical or product decision is made
+- **`PROGRESS.md`**: A milestone is completed or a new issue is discovered
+- **`ACCESSIBILITY.md`**: VoiceOver behavior, announcements, or audio routing changes
+- **`AI-BEHAVIOR.md`**: Gemini prompts, interpretation rules, or language routing changes
+- **`TESTING.md`**: New test scenarios are discovered or build procedures change
+- **`ROADMAP.md`**: Ticket status or timeline changes
+
+Do NOT update docs for trivial changes (typo fixes, minor refactors that don't change behavior).

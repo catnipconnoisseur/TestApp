@@ -1,0 +1,145 @@
+# TestApp — Key Decisions
+
+> Last updated: 2026-09-02
+> Decisions are recorded chronologically. Each entry explains **what** was decided, **why**, and **what was rejected**.
+
+---
+
+## D001 — Feature-Oriented Architecture Over MVVM
+
+**Decision:** Use a flat feature-folder structure with Views, Services, and Managers. No enforced MVVM layer.
+
+**Why:** The app has a single primary screen (CameraView). Introducing ViewModels for every feature adds indirection without solving a real problem. State lives in `CameraView` via `@State`, and services handle domain logic.
+
+**Rejected:** Full MVVM with a ViewModel per feature. Will be reconsidered only if `CameraView` state becomes unmanageable.
+
+---
+
+## D002 — Camera as Root View, Not a Modal
+
+**Decision:** The camera is the app's root view. There is no persistent "Home" screen to navigate away from.
+
+**Why:** The original `HomeView` was a decorative landing screen that required 4–5 VoiceOver interactions before reaching the functional camera. For a blind user, this was a wall with no value. Now: first launch → WelcomeView onboarding → Camera. All subsequent launches → Camera directly.
+
+**Rejected:** Keeping a permanent HomeView as a navigation hub. Also rejected: launching directly into Camera without any onboarding (new VoiceOver users need to learn the hold-to-speak pattern first).
+
+---
+
+## D003 — Single Voice Interaction Area Instead of Dual Buttons
+
+**Decision:** Replace the `[Analyze]` + `[Hold to Speak]` dual-button layout with a single large (~120pt) voice interaction area at the bottom.
+
+**Why:** Two buttons forced the user to decide which to use. Voice input ("What is this?") subsumes the Analyze button's function. A single large touch target is better for motor accessibility. The Analyze button is kept as a hidden fallback only when microphone permission is denied.
+
+**Rejected:** Keeping both buttons side-by-side.
+
+---
+
+## D004 — On-Device Vision as Pre-Filter, Not Final Answer
+
+**Decision:** On-device `VNClassifyImageRequest` provides broad category hints (e.g., "container", "document") that are used as pre-filters and sensor hints for Gemini, but never as the final user-facing answer.
+
+**Why:** Built-in Vision classifications are too generic for meaningful accessibility responses. "Beverage Container" is not useful to a blind user who wants to know "This is a 500ml water bottle by Aqua."
+
+**Rejected:** Using Vision classification as the primary identification engine.
+
+---
+
+## D005 — Gemini Multimodal AI as Primary Reasoning Engine
+
+**Decision:** Gemini 2.5 Flash provides the final contextual understanding for all user queries. It receives the camera frame, on-device OCR/classification hints, and the user's spoken question.
+
+**Why:** Multimodal AI can reason about context, spatial relationships, deformed objects, and answer open-ended questions — capabilities that on-device Vision alone cannot provide.
+
+**Trade-off:** Requires network connectivity and a valid API key. Rate limiting (HTTP 429) is handled gracefully with fallback to on-device results.
+
+---
+
+## D006 — Structured Plain-Text Output Contract (HEADLINE / DESCRIPTION)
+
+**Decision:** All Gemini responses must follow a strict two-part format:
+```
+HEADLINE: [1-4 word direct answer]
+DESCRIPTION: [1-3 sentence explanation]
+```
+
+**Why:** Screen readers need concise, predictable output. A headline gives the quick answer; a description provides context. Markdown formatting (bold, bullets, headers) is explicitly forbidden because it creates auditory noise in VoiceOver.
+
+**Rejected:** Free-form Gemini responses. Also rejected: JSON-structured responses (adds parsing complexity for minimal benefit over labeled plain text).
+
+---
+
+## D007 — Multi-Signal Currency Synthesis for Indonesian Rupiah
+
+**Decision:** Indonesian banknote identification uses a multi-signal approach: on-device OCR → denomination text matching → color scheme matching → portrait/emblem recognition → Gemini visual reasoning. Signals are synthesized in `InterpretationService`.
+
+**Why:** No single signal is reliable alone. OCR fails on wrinkled notes. Color alone is ambiguous under varied lighting. Gemini alone may hallucinate denominations. Combining all signals produces the most reliable identification.
+
+**Implementation detail:** `InterpretationService.validRupiahDenominations` maps ~70 text variants (including Indonesian words like "lima puluh ribu") to canonical denominations.
+
+---
+
+## D008 — Language as a Pipeline-Wide Directive, Not a Post-Processing Translation
+
+**Decision:** When the user selects Indonesian, the selected locale is injected into the Gemini prompt as a strict `LANGUAGE_DIRECTIVE`. The AI generates its response in Indonesian natively — it does not generate English and translate after the fact.
+
+**Why:** Post-processing translation breaks natural phrasing and increases latency. Native generation produces more fluent Indonesian responses. The locale flows through: `SpeechService.selectedLocale` → `MultimodalService.buildLanguageDirective()` → `InterpretationService.interpret(locale:)` → `AccessibilityVoiceService.speak(languageCode:)`.
+
+**Rejected:** Client-side translation of English responses. Also rejected: separate Indonesian-specific prompts (the unified prompt with a language directive is more maintainable).
+
+---
+
+## D009 — Hold-to-Talk Interaction Model
+
+**Decision:** Voice input uses a hold-to-talk model: user presses and holds the bottom voice area → speaks → releases → transcript is captured and submitted.
+
+**Why:** Hold-to-talk gives the user explicit control over when recording starts and stops. This avoids false activations and is predictable for VoiceOver users (double-tap to activate, double-tap to release). It matches natural walkie-talkie behavior.
+
+**Rejected:** Push-to-talk (single tap toggle). Rejected: always-listening mode. Rejected: wake-word activation.
+
+---
+
+## D010 — Scene Divergence Detection for Answer Persistence
+
+**Decision:** Once Gemini provides an answer, it persists in the interpretation card until the camera detects a significant scene change (divergence score > 0.50 sustained for 350ms).
+
+**Why:** Users need the answer to stay visible while they naturally move the camera. Without persistence, minor hand tremors would clear the answer. The divergence score combines OCR text change (weight 0.5), classification change (weight 0.3), and feature print embedding distance (weight 0.5).
+
+**Rejected:** Immediate clearing on any camera movement. Also rejected: time-based auto-clear (the user should control when information disappears).
+
+---
+
+## D011 — AccessibilityVoiceService as Dual-Mode Audio Coordinator
+
+**Decision:** A singleton `AccessibilityVoiceService` routes all spoken output through two paths:
+1. **VoiceOver active** → `UIAccessibility.post(notification: .announcement)` with language attributes
+2. **VoiceOver inactive** → `AVSpeechSynthesizer` with language-matched voice
+
+**Why:** Blind users may or may not have VoiceOver enabled. The app must always produce audible answers. When VoiceOver is active, posting accessibility announcements avoids duplicate audio streams. When VoiceOver is off, the synthesizer speaks aloud so the user still hears the answer.
+
+---
+
+## D012 — Zero Third-Party Dependencies
+
+**Decision:** The entire project uses only native Apple frameworks: SwiftUI, AVFoundation, Vision, Speech, CoreImage, UIKit.
+
+**Why:** This is a learning project for Apple Developer Academy. External dependencies would obscure the learning objective of understanding Apple's native visual and accessibility technologies. Also: fewer dependencies = simpler build, no CocoaPods/SPM resolution, and deterministic behavior.
+
+---
+
+## D013 — Progressive Disclosure in AI Responses
+
+**Decision:** The AI follows intent-controlled progressive disclosure rules. It answers only what the user asked:
+- "What is this?" → Name + one note
+- "What color is it?" → Color only
+- "Describe everything" → Full visual overview (explicit exception)
+
+**Why:** A blind user is in control. Unsolicited information creates auditory overload. The user will ask follow-up questions if they want more detail. This mirrors natural human conversation, not robotic data dumps.
+
+---
+
+## D014 — Physical Deformation Resilience in Prompts
+
+**Decision:** Both Gemini prompt builders include explicit `PHYSICAL DEFORMATION RESILIENCE` rules instructing the AI that wrinkled, folded, creased, bent, or angled objects retain their identity.
+
+**Why:** Standard image classifiers perform worse on non-flat objects. By explicitly instructing the AI model that physical deformation does not change identity, we improve robustness for real-world conditions (crumpled banknotes, folded packaging, angled labels).

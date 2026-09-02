@@ -1,0 +1,164 @@
+# TestApp — Testing & Verification
+
+> Last updated: 2026-09-02
+
+---
+
+## Build Command
+
+```bash
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild \
+  -project TestApp.xcodeproj \
+  -scheme TestApp \
+  -destination 'generic/platform=iOS' \
+  build
+```
+
+Expected: `BUILD SUCCEEDED` with 0 errors.
+
+> **Note:** Warnings from Apple frameworks (e.g., Vision, Speech) may appear and can be ignored if they are not from project source code.
+
+---
+
+## Unit Tests
+
+**Status: Not implemented.**
+
+No XCTest infrastructure exists. All verification has been manual (build + on-device testing). If unit tests are added in the future:
+- Test `InterpretationService.extractRupiahDenomination()` with all 70+ text variants
+- Test `InterpretationService.computeSceneDivergence()` with known score inputs
+- Test `MultimodalService.buildLanguageDirective()` for both locales
+- Test `InterpretationService.parseStructuredMultimodalText()` with various HEADLINE/DESCRIPTION formats
+
+---
+
+## Manual Verification Checklist
+
+### App Lifecycle
+- [ ] First launch → WelcomeView appears with 3-step onboarding
+- [ ] Second launch → Camera opens directly (onboarding skipped)
+- [ ] Settings sheet opens and dismisses correctly
+
+### Camera & Vision
+- [ ] Camera permission dialog appears on first launch
+- [ ] Live camera viewfinder renders at full screen
+- [ ] On-device Vision produces classification and OCR results (check developer diagnostics)
+- [ ] Camera frame capture returns JPEG data (non-nil)
+
+### Voice Interaction
+- [ ] Hold bottom area → "Listening" state with haptic feedback
+- [ ] Speak a question → partial transcript appears in speech card
+- [ ] Release → "Thinking" state with animated indicator
+- [ ] Answer appears in interpretation card
+
+### Multimodal AI
+- [ ] Gemini API responds with HEADLINE and DESCRIPTION
+- [ ] Response is plain text (no Markdown symbols)
+- [ ] Rate limiting (429) shows graceful fallback message
+- [ ] Missing API key shows configuration prompt
+
+### Indonesian Language
+- [ ] Switch to Indonesian in Settings
+- [ ] Voice input transcribes in Indonesian
+- [ ] Gemini response is in Indonesian
+- [ ] Headline is Indonesian (e.g., "Uang Kertas Rp50.000")
+- [ ] VoiceOver speaks in Indonesian voice
+
+### Banknote Recognition
+- [ ] Flat banknote → correct denomination identified
+- [ ] Wrinkled banknote → still identified (deformation resilience)
+- [ ] Denomination unclear → shows "Denomination Unclear" with cautionary note
+- [ ] Multiple denomination formats recognized (100000, 100.000, seratus ribu)
+
+### Accessibility
+- [ ] VoiceOver reads elements in correct order: settings → result → voice area
+- [ ] Camera viewfinder is hidden from VoiceOver
+- [ ] Announcements are spoken after answer is received
+- [ ] When VoiceOver is off, `AVSpeechSynthesizer` speaks the answer aloud
+- [ ] Haptic feedback on interaction start/end
+
+### Scene Divergence
+- [ ] Point at Object A → ask "What is this?" → receive answer
+- [ ] Keep pointing at Object A → answer persists despite minor camera movement
+- [ ] Point at Object B → answer clears when divergence threshold is exceeded
+
+### Error States
+- [ ] Camera unauthorized → "Camera access required" screen
+- [ ] Camera unavailable → "Camera unavailable" screen
+- [ ] Microphone denied → Analyze fallback button appears
+- [ ] Network error → descriptive error message in interpretation card
+
+---
+
+## Known Test Scenarios (Edge Cases)
+
+### Currency-Specific
+| Scenario | Expected Behavior |
+|----------|-------------------|
+| Rp100k flat, good light | "Rp100,000 Indonesian Banknote" with strong confidence |
+| Rp50k wrinkled | "Rp50,000 Indonesian Banknote" (deformation resilience) |
+| Rp20k folded in half | Should still identify from color (green) + partial text |
+| Multiple bills stacked | May identify the top bill only |
+| Non-Indonesian currency | Should identify as currency but not map to Rupiah |
+| Rp denomination OCR partial ("5000" visible, rest occluded) | "Rp5,000" if sufficient visual cues |
+| Very dark / heavily occluded | "Indonesian Banknote (Denomination Unclear)" |
+
+### Voice Query-Specific
+| Scenario | Expected Behavior |
+|----------|-------------------|
+| "What is this?" | Concise identification |
+| "What color is it?" | Color only, no extra details |
+| "How much is this?" (pointing at banknote) | Denomination answer |
+| "Describe everything you see" | Full visual overview (progressive disclosure exception) |
+| Very short recording (<0.5s) | "I didn't hear a question" |
+| Ambient noise, no clear speech | "I didn't hear a question" or partial transcript |
+| Follow-up: "Is it fresh?" (after "This is turmeric") | Uses previous context for pronoun resolution |
+
+### Language-Specific
+| Scenario | Expected Behavior |
+|----------|-------------------|
+| Indonesian mode + English question | Response still in Indonesian |
+| Indonesian mode + Indonesian question | Response in Indonesian |
+| Switch language mid-session | Next query uses new language |
+
+---
+
+## Performance Benchmarks (Observed)
+
+| Metric | Typical Range |
+|--------|---------------|
+| Vision frame processing | 15–40ms |
+| Camera frame capture (JPEG) | 5–15ms |
+| Gemini API round trip | 1,000–4,000ms |
+| Speech recording to transcript | 200–500ms finalization |
+| Total perceived turnaround (hold → answer) | 2,000–5,000ms |
+
+---
+
+## Debugging Tips
+
+### Enable Developer Diagnostics
+Settings → Developer → "Show Diagnostics on Camera" → ON
+
+This overlay shows:
+- Last Gemini latency (ms)
+- Perceived turnaround (ms)
+- Payload size (bytes)
+- Multimodal status (200 OK / 429 / error)
+- Scene divergence score
+- Trigger type (Voice / Test-Text / Auto)
+
+### Console Logging
+Filter Xcode console by service tag:
+- `[SPEECH]` — Speech recognition events
+- `[VOICE]` — Audio synthesis events
+- `[VisionService]` — Vision processing errors
+
+### Common Issues
+| Symptom | Likely Cause |
+|---------|-------------|
+| "API Key not configured" | `Secrets.swift` is gitignored and empty; enter key in Settings |
+| Gemini returns English in Indonesian mode | Language directive may have been removed from prompt |
+| Answer clears immediately | Scene divergence threshold too low or feature print distance spike |
+| No speech transcription | Microphone permission denied; check iOS Settings |
+| VoiceOver not announcing answers | `AccessibilityVoiceService.speak()` not called, or VoiceOver is off and synthesizer failed |
