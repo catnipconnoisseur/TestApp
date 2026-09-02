@@ -193,3 +193,19 @@ DESCRIPTION: [1-3 sentence explanation]
 1. *Continuous Video Streaming to Gemini:* Cloud video streaming consumes excessive bandwidth, battery, and introduces unacceptable latency and token costs.
 2. *Permanent / Persistent Disk Conversation History:* Unnecessary for real-time visual assistance and risks context contamination between disparate physical tasks.
 3. *Single-Frame Instant Scene Reset:* Rejected because normal hand jitter and perspective rotation produce single-frame feature variance, which would erroneously wipe user context mid-conversation.
+
+---
+
+## D018 — Create ML Feasibility and Hybrid On-Device / Cloud Strategy
+
+**Decision:** Defer adding a standalone custom Create ML / Core ML model to the production build, preserving the current hybrid architecture (Apple Vision OCR/classification + multi-signal evidence fusion + Gemini 2.5 Flash multimodal reasoning).
+
+**Why:**
+- **Visual Assistant vs Closed-Set Classifier:** Visually impaired users require contextual, intent-driven conversational assistance (*"What is this?"*, *"What is it used for?"*, *"Is it safe?"*). A closed-set Core ML classifier outputs only static labels and cannot participate in multi-turn dialog or progressive disclosure.
+- **Deformation Resilience Already Solved via Multi-Cue Synthesis:** While on-device Vision OCR struggles on crumpled or folded banknotes, Gemini 2.5 Flash with prompt-level `PHYSICAL DEFORMATION RESILIENCE` synthesizes secondary cues (color schemes, portraits, emblem positions, layout) to correctly identify denominations without needing a custom neural network.
+- **Zero App Bundle Bloat:** Keeps the app bundle lightweight (0 MB added model weight) and avoids the heavy maintenance burden of curating and updating 4,000+ annotated physical training images across currency emissions.
+- **Architectural Extensibility:** Should a low-latency offline edge-classifier be mandated in the future, it can be integrated cleanly into `VisionService` via `VNCoreMLRequest` as an additional high-confidence sensor feed into `InterpretationService` without altering user-facing view logic.
+
+**Rejected Alternatives:**
+1. *Pure Core ML Architecture:* Completely rejected because it strips the app of all conversational and open-domain visual reasoning capabilities.
+2. *Speculative Model Bundling:* Rejected adding placeholder or small un-benchmarked `.mlmodel` files to prevent shipping untested binary weight without a demonstrated user need.

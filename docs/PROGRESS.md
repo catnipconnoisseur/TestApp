@@ -106,17 +106,18 @@
 
 ---
 
-## Planned / Not Yet Started
-
-### T010 — Create ML Feasibility & Evaluation `Planned`
-- Evaluate whether a custom trained model improves recognition beyond Gemini + Vision
-- Only implement if justified by real limitation evidence
+### T010 — Create ML Feasibility & Evaluation `Complete`
+- Research and comparative evaluation of built-in Apple Vision vs custom Create ML vs Gemini 2.5 Flash
+- Indonesian Rupiah deformation analysis (crumpled, folded, occluded, low-light notes)
+- Dataset requirement specification ($\ge 4,000$ annotated images for 7 classes)
+- Evaluated offline accessibility trade-offs and decision to defer model bundling in favor of existing hybrid multi-signal pipeline
+- Comprehensive research report in `docs/T010-CREATEML-FEASIBILITY.md` and decision record D018
 
 ---
 
-## Current Active Ticket
+## Current Status
 
-**T009 complete.** Ready for on-device field usability validation.
+**All Core Milestones (T001–T010) Complete.** The prototype is ready for physical device verification and final evaluation.
 
 ---
 
