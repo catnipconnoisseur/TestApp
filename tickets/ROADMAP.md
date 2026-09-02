@@ -17,8 +17,8 @@ This file tracks the evolving high-level roadmap for the 10-day Act Phase challe
 | **T005** | **Interpretation & Decision Layer** | `Complete` | Combine Vision, OCR, and Multimodal evidence into structured result with automatic scene-change detection | T004 |
 | **T006** | **Reliability & Real-World Evaluation** | `Complete` | Evaluate pipeline consistency, latency, accuracy, and failure modes across real-world physical conditions | T005 |
 | **T007** | **Conversational Multimodal Interaction** | `Complete` | Voice-driven question answering combining camera frames with user speech and persistent answer state | T006 |
-| **T008** | **Accessibility Experience & Intelligent Assistance** | `In Progress` | UX audit, assistant mental model, automatic vs on-demand matrix, and failure modes | T007 |
-| **T009** | **Conversational Memory & Accessibility Feedback** | `Planned` | Scene-anchored conversational memory, repeat answer gesture, and tactile progress feedback | T008 |
+| **T008** | **Accessibility Experience & Intelligent Assistance** | `Complete` | UX audit, assistant mental model, automatic vs on-demand matrix, Action Button / Quick Access, and 4-step setup hub | T007 |
+| **T009** | **Scene-Anchored Conversational Memory** | `Complete` | Scene-anchored conversational threading, FeaturePrint stability, debounced divergence resets, and multi-turn Gemini reasoning | T008 |
 | **T010** | **Create ML Feasibility & Evaluation** | `Planned` | Evaluate custom model need vs built-in, prepare final prototype | T009 |
 
 ---
@@ -40,5 +40,6 @@ This file tracks the evolving high-level roadmap for the 10-day Act Phase challe
 - **2026-08-28**: T005 completed; interpretation & decision layer, multi-signal scene divergence tracking, and clean plain-text output verified on physical iPhone.
 - **2026-08-28**: T006 completed; real-world evaluation, request policies, and user-initiated multimodal pipeline verified.
 - **2026-08-31**: T007 completed; on-device speech transcription, multimodal voice query, and persistent answer state verified.
-- **2026-08-31**: T008 initialized as Accessibility Experience & Intelligent Assistance (`In Progress`).
+- **2026-08-31**: T008 completed; accessibility UX audit, proactive permissions setup hub, Action Button & App Shortcuts integration, and banknote deformation robustness.
+- **2026-09-02**: T009 completed; scene-anchored conversational memory, on-device FeaturePrint stability evaluation, temporal divergence debouncing, and multi-turn Gemini reasoning.
 
