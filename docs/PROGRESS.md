@@ -82,6 +82,16 @@
 - Deformation-resilient prompt rules
 - Commit: `feat(recognition): enhance visual recognition accuracy`
 
+### Cross-Cutting: Quick Access & Action Button Integration `Complete`
+- `QuickAccessIntent` (`AppIntent`) and `TestAppShortcuts` (`AppShortcutsProvider`)
+- Action Button, Siri ("Ask TestApp" / "Tanya TestApp"), Spotlight, and Shortcuts support
+- Immediate foregrounding with scene phase lifecycle management and nonvisual "TestApp ready" announcements
+- Optional guided setup card during first-launch onboarding on the Permissions / Setup page (`WelcomeView` Screen 2)
+- Reusable `QuickAccessSetupSheet` in Settings and Onboarding with `ShortcutsLink` and iOS Settings deep-link
+- Corrected 4-step onboarding flow: Welcome → Permissions / Setup → Try Asking → Get Started
+- Full bilingual English and Indonesian support throughout onboarding, guidance, and VoiceOver feedback
+- *Note:* Hardware Action Button assignment requires physical iPhone 15 Pro+ and user selection in iOS Settings.
+
 ---
 
 ## Planned / Not Yet Started

@@ -65,7 +65,8 @@ UIAccessibility.post(notification: .announcement, argument: attributed)
 ## Announcements
 
 ### When to Announce
-- **Camera ready**: "Camera ready. Touch and hold the bottom of the screen to ask a question."
+- **Camera ready (standard launch)**: "Camera ready. Touch and hold the bottom of the screen to ask a question." / "Kamera siap. Tahan bagian bawah layar untuk bertanya."
+- **Quick Access ready (Action Button / Shortcut)**: "TestApp ready. Touch and hold the bottom of the screen to ask a question." / "TestApp siap. Tahan bagian bawah layar untuk bertanya."
 - **Listening started**: "Listening..." (with haptic feedback)
 - **Thinking**: "Analyzing your question..." (with gentle haptic pulses)
 - **Answer received**: Full headline + description announced
@@ -123,12 +124,19 @@ This automatically routes to:
 
 ## Onboarding Accessibility (WelcomeView)
 
-The 3-step onboarding is designed for VoiceOver:
-1. **Introduction**: VoiceOver reads the "Understand What You See" heading and 3-step instructions
-2. **Voice Tutorial**: Live practice area where VoiceOver guides the user through hold-to-speak
-3. **Ready**: "Get Started" button completes onboarding
-
-Permissions (camera + microphone) are requested proactively before the voice tutorial step so the user isn't interrupted during their first interaction.
+The 4-step onboarding is designed for VoiceOver:
+1. **Welcome (Introduction)**: Spoken welcome, value proposition (camera & microphone assistance), and primary "Continue" button.
+2. **Permissions / Setup (Central Hub)**:
+   - **VoiceOver Hierarchy**:
+     1. Page header & context ("Set Up TestApp", "Step 2 of 4").
+     2. Required Permissions (Camera access status, Microphone & Speech recognition status).
+     3. Quick Access section ("Quick Access", "Optional", Action Button description, privacy note).
+     4. "Set Up Quick Access" / "Review Setup" button with accessible hints.
+     5. "Continue" primary button.
+   - **User Agency & Privacy**: States explicitly that Quick Access only opens the camera and the microphone is never activated automatically.
+   - **Non-blocking**: Users can tap "Continue" without configuring Quick Access.
+3. **Try Asking (Voice Practice)**: Live interactive practice area with `onboardingVoiceArea`, real-time speech feedback, and contextual "Skip" / "Continue" actions.
+4. **Get Started (Ready)**: "You're ready" confirmation, example spoken questions, and primary "Get Started" button opening the live camera.
 
 ---
 

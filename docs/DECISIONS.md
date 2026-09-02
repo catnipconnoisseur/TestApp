@@ -143,3 +143,34 @@ DESCRIPTION: [1-3 sentence explanation]
 **Decision:** Both Gemini prompt builders include explicit `PHYSICAL DEFORMATION RESILIENCE` rules instructing the AI that wrinkled, folded, creased, bent, or angled objects retain their identity.
 
 **Why:** Standard image classifiers perform worse on non-flat objects. By explicitly instructing the AI model that physical deformation does not change identity, we improve robustness for real-world conditions (crumpled banknotes, folded packaging, angled labels).
+
+---
+
+## D015 — Quick Access & Action Button Integration via Native App Intents
+
+**Decision:** Expose TestApp to system shortcuts, Siri, Spotlight, and the iPhone Action Button via the native `AppIntents` framework (`QuickAccessIntent` + `AppShortcutsProvider`), with `openAppWhenRun = true` and a dedicated `launchedFromQuickAccess` launch flag.
+
+**Why:** For blind and visually impaired users, finding and opening the app icon introduces friction in spontaneous physical environments. Integrating with the Action Button and Siri reduces the steps from *Need Visual Info → Search App → Open → Orient → Hold* to *Press Action Button → "TestApp ready" → Hold*.
+
+**Rejected Alternatives:**
+1. *Custom URL Schemes / Deep Linking:* Unnecessary complexity; `@AppStorage` / `UserDefaults` and native `AppIntents` provide direct, type-safe foregrounding without custom URL scheme registration overhead.
+2. *Automatic Microphone Recording on Launch:* Rejected to preserve user agency and privacy. The user must intentionally hold the Voice Area to initiate recording.
+3. *Bypassing Onboarding:* Rejected. If first-time onboarding or permissions have not been completed, standard onboarding flows remain active to guarantee safety and hardware permissions.
+
+---
+
+## D016 — Centralized Permissions / Setup Hub with Optional Quick Access
+
+**Decision:** Structure the onboarding flow as **Welcome → Permissions / Setup → Try Asking → Get Started**, placing the optional Quick Access card directly inside the **Permissions / Setup** page (Screen 2) immediately following the Welcome screen.
+
+**Why:**
+- The Permissions / Setup page serves as the app's central setup hub where the user prepares the app: granting required hardware access (Camera, Microphone, Speech) and optionally setting up Quick Access.
+- Users land directly on the setup hub after the Welcome screen, ensuring Quick Access is immediately discoverable without requiring navigation to later stages or buried sheets.
+- "Open iOS Settings" uses a cascading URL resolver prioritizing direct Action Button deep linking (`App-prefs:root=ACTION_BUTTON` / `prefs:root=ACTION_BUTTON`) with seamless fallback to standard app settings.
+- The Try Asking page remains dedicated exclusively to teaching the core voice interaction (`Touch and hold Voice Area → speak → release`).
+- Keeping Quick Access optional ensures users can tap "Continue" without being blocked, while clearly communicating privacy guarantees (camera only; microphone never records automatically).
+
+**Rejected Alternatives:**
+1. *Placing Quick Access on the final Ready screen:* Rejected because users had to navigate past the interactive voice tutorial before even seeing shortcut options.
+2. *Mandatory Action Button Configuration:* Rejected. Third-party apps cannot force or programmatically assign hardware buttons; forcing external navigation creates onboarding friction.
+3. *Simulated Assignment Detection:* Rejected. iOS provides no public API to verify hardware Action Button assignment. The app accurately tracks user-guided completion via `@AppStorage("hasCompletedQuickAccessSetup")`.

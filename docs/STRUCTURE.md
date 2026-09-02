@@ -17,6 +17,7 @@ TestApp/
 │   ├── Home/                     # First-launch onboarding (WelcomeView)
 │   ├── Interpretation/           # Multi-signal evidence synthesis
 │   ├── Multimodal/               # Gemini API client & prompt engineering
+│   ├── QuickAccess/              # App Intents & Action Button shortcuts
 │   ├── Recognition/              # On-device Apple Vision (OCR + classification)
 │   ├── Settings/                 # User preferences sheet
 │   └── Speech/                   # On-device speech recognition & audio output
@@ -53,7 +54,7 @@ TestApp/
 ### Home/
 | File | Role | Size |
 |------|------|------|
-| `WelcomeView.swift` | 3-step accessible onboarding: Introduction → Voice Tutorial → Ready. Appears only on first launch. Sets `hasCompletedOnboarding` in `@AppStorage`. | ~30 KB |
+| `WelcomeView.swift` | 4-step accessible onboarding: Welcome → Permissions / Setup → Try Asking → Get Started. Appears only on first launch. Sets `hasCompletedOnboarding` in `@AppStorage`. | ~30 KB |
 
 ### Recognition/
 | File | Role | Size |
@@ -79,6 +80,12 @@ TestApp/
 |------|------|------|
 | `SpeechService.swift` | On-device `SFSpeechRecognizer` with hold-to-talk recording, locale-aware transcription, and `UserDefaults` persistence for `selectedLocale`. | ~9 KB |
 | `AccessibilityVoiceService.swift` | Singleton spoken audio coordinator. Routes through VoiceOver announcements (when active) or `AVSpeechSynthesizer` (when VoiceOver is off). Language-aware voice selection. | ~3 KB |
+
+### QuickAccess/
+| File | Role | Size |
+|------|------|------|
+| `QuickAccessIntent.swift` | `QuickAccessIntent` (`AppIntent`) and `TestAppShortcuts` (`AppShortcutsProvider`) exposing Action Button, Siri, and Shortcuts triggers with zero setup. | ~1 KB |
+| `QuickAccessGuideView.swift` | `QuickAccessSetupSheet` and `QuickAccessOnboardingCardView` providing step-by-step setup guidance, `ShortcutsLink`, and iOS Settings deep-linking. | ~11 KB |
 
 ### Settings/
 | File | Role | Size |

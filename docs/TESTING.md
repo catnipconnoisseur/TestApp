@@ -121,6 +121,26 @@ No XCTest infrastructure exists. All verification has been manual (build + on-de
 | Indonesian mode + Indonesian question | Response in Indonesian |
 | Switch language mid-session | Next query uses new language |
 
+### Quick-Access & Action Button Specific
+| Scenario | Expected Behavior |
+|----------|-------------------|
+| Standard app launch (tap icon) | Opens to CameraView; speaks "Camera ready" arrival announcement |
+| Cold launch via Action Button / Shortcut | Opens app directly to CameraView; speaks "TestApp ready" announcement |
+| Warm launch via Action Button (app backgrounded) | Foregrounds app directly; speaks "TestApp ready" announcement |
+| First launch via Action Button (prior to onboarding) | WelcomeView appears normally; permissions requested; does not break |
+| Siri invocation ("Hey Siri, ask TestApp" / "Tanya TestApp") | Launches app into ready camera state |
+| Action Button press while device locked | iOS requires Face ID/Passcode, then opens directly into ready camera state |
+| Welcome Screen 1 (Welcome) | Shows welcome introduction; tapping Continue advances directly to Permissions / Setup |
+| Welcome Screen 2 (Permissions / Setup) | Central setup hub with Required Permissions (Camera, Mic) + Optional Quick Access card |
+| Tap "Set Up Quick Access" on Screen 2 | Opens `QuickAccessSetupSheet` with step-by-step guidance & deep links |
+| Tap "Open iOS Settings" in setup sheet | Deep links directly to iOS Settings.app; marks setup complete on return |
+| Tap "Done" or dismiss setup sheet | Returns to Permissions / Setup; card updates to "Quick Access Configured" |
+| Tap "Continue" on Screen 2 | Prompts for required permissions (if ungranted) and advances directly to Screen 3 (Try Asking) |
+| Screen 3 (Try Asking) | Interactive voice practice area with hold-to-speak gesture |
+| Screen 4 (Get Started) | Confirmation screen with "Get Started" button entering CameraView |
+| Settings sheet Quick Access button | Opens identical `QuickAccessSetupSheet` for reconfiguration |
+| Indonesian locale throughout onboarding | All titles, cards, buttons, and VoiceOver speak in Bahasa Indonesia |
+
 ---
 
 ## Performance Benchmarks (Observed)

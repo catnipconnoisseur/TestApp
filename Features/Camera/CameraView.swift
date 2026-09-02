@@ -107,6 +107,9 @@ struct CameraView: View {
     // Camera arrival announcement tracker
     @State private var hasAnnouncedCameraArrival = false
     
+    // Scene phase for background/foreground lifecycle handling
+    @Environment(\.scenePhase) private var scenePhase
+    
     // Thinking State Haptic Task
     @State private var thinkingHapticTask: Task<Void, Never>? = nil
     
@@ -134,15 +137,7 @@ struct CameraView: View {
         }
         .onAppear {
             cameraManager.requestAccessAndSetup()
-            if !hasAnnouncedCameraArrival {
-                hasAnnouncedCameraArrival = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                    let arrivalMsg = speechService.isIndonesian
-                        ? "Kamera siap. Tahan bagian bawah layar untuk bertanya."
-                        : "Camera ready. Touch and hold the bottom of the screen to ask a question."
-                    AccessibilityVoiceService.shared.speak(arrivalMsg, languageCode: speechService.selectedLocale.identifier)
-                }
-            }
+            checkAndAnnounceLaunchState()
         }
         .onDisappear {
             cameraManager.stopSession()
@@ -150,6 +145,12 @@ struct CameraView: View {
             stopThinkingHaptics()
             AccessibilityVoiceService.shared.stopSpeaking()
             resetSessionState()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                cameraManager.requestAccessAndSetup()
+                checkAndAnnounceLaunchState()
+            }
         }
         .sheet(isPresented: $showSettingsSheet) {
             SettingsView(
@@ -160,6 +161,30 @@ struct CameraView: View {
         }
         .onChange(of: cameraManager.latestResult) { _, newResult in
             handleIncomingVisionFrame(newResult)
+        }
+    }
+    
+    // MARK: - Launch & Quick Access Announcement
+    
+    private func checkAndAnnounceLaunchState() {
+        let isQuickAccess = UserDefaults.standard.bool(forKey: "launchedFromQuickAccess")
+        if isQuickAccess {
+            UserDefaults.standard.set(false, forKey: "launchedFromQuickAccess")
+            hasAnnouncedCameraArrival = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                let msg = speechService.isIndonesian
+                    ? "TestApp siap. Tahan bagian bawah layar untuk bertanya."
+                    : "TestApp ready. Touch and hold the bottom of the screen to ask a question."
+                AccessibilityVoiceService.shared.speak(msg, languageCode: speechService.selectedLocale.identifier)
+            }
+        } else if !hasAnnouncedCameraArrival {
+            hasAnnouncedCameraArrival = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                let arrivalMsg = speechService.isIndonesian
+                    ? "Kamera siap. Tahan bagian bawah layar untuk bertanya."
+                    : "Camera ready. Touch and hold the bottom of the screen to ask a question."
+                AccessibilityVoiceService.shared.speak(arrivalMsg, languageCode: speechService.selectedLocale.identifier)
+            }
         }
     }
     

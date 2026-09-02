@@ -1,12 +1,14 @@
 import AVFoundation
+import Speech
 import SwiftUI
 
 // MARK: - Onboarding Step
 
 private enum OnboardingStep: Int, CaseIterable {
-    case introduction = 0
-    case voiceTutorial = 1
-    case ready = 2
+    case welcome = 0          // Screen 1: Welcome & Value Proposition
+    case permissionsSetup = 1 // Screen 2: Central Setup Hub (Required Permissions + Optional Quick Access)
+    case tryAsking = 2        // Screen 3: Interactive Voice Tutorial
+    case ready = 3            // Screen 4: Ready / Get Started
 }
 
 // MARK: - Voice Tutorial State
@@ -20,20 +22,28 @@ private enum TutorialState: Equatable {
     case unavailable
 }
 
-// MARK: - WelcomeView (Interactive 3-Screen Onboarding)
+// MARK: - WelcomeView (Interactive 4-Step Onboarding)
 
-/// Accessible, polished first-launch onboarding following Design Principles B + C:
-/// - B: Contextual Primary Action (Permissions -> Voice Area -> Get Started)
-/// - C: Consistent Bottom Interaction Zone (Spatial anchor matching CameraView)
+/// Accessible first-launch onboarding following the corrected flow:
+/// **Welcome → Permissions / Setup → Try Asking → Get Started**
+///
+/// Principles:
+/// - Contextual Primary Action: Welcome -> Setup Hub -> Voice Practice -> Ready
+/// - Consistent Bottom Interaction Zone: 120pt spatial anchor matching CameraView
+/// - Non-blocking Quick Access: Optional setup configured on the Permissions/Setup page
 struct WelcomeView: View {
     
     @Binding var hasCompletedOnboarding: Bool
     
-    @State private var currentStep: OnboardingStep = .introduction
+    @State private var currentStep: OnboardingStep = .welcome
     @State private var tutorialState: TutorialState = .idle
     @State private var speechService = SpeechService()
     @State private var isHolding = false
-    @State private var hasPermissions = false
+    @State private var showQuickAccessSheet = false
+    @AppStorage("hasCompletedQuickAccessSetup") private var hasCompletedQuickAccessSetup = false
+    
+    @State private var cameraAuthorized = false
+    @State private var micAndSpeechAuthorized = false
     @State private var permissionsChecked = false
     
     var body: some View {
@@ -51,10 +61,12 @@ struct WelcomeView: View {
                 // Screen Content Area
                 Group {
                     switch currentStep {
-                    case .introduction:
-                        introductionContent
-                    case .voiceTutorial:
-                        voiceTutorialContent
+                    case .welcome:
+                        welcomeContent
+                    case .permissionsSetup:
+                        permissionsSetupContent
+                    case .tryAsking:
+                        tryAskingContent
                     case .ready:
                         readyContent
                     }
@@ -73,11 +85,16 @@ struct WelcomeView: View {
                     .padding(.bottom, 24)
             }
         }
+        .sheet(isPresented: $showQuickAccessSheet) {
+            QuickAccessSetupSheet(isIndonesian: speechService.isIndonesian)
+        }
         .onAppear {
+            updatePermissionStatuses()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                AccessibilityVoiceService.shared.speak(
-                    "Welcome to TestApp, your visual assistant. TestApp uses your camera and microphone to describe what is around you. Tap the Set Up Permissions button at the bottom of the screen to get started."
-                )
+                let welcomeMsg = speechService.isIndonesian
+                    ? "Selamat datang di TestApp, asisten visual Anda. TestApp menggunakan kamera dan mikrofon untuk mendeskripsikan apa yang ada di sekitar Anda. Ketuk tombol Lanjutkan di bagian bawah layar untuk mengatur aplikasi."
+                    : "Welcome to TestApp, your visual assistant. TestApp uses your camera and microphone to describe what is around you. Tap Continue at the bottom of the screen to set up the app."
+                AccessibilityVoiceService.shared.speak(welcomeMsg, languageCode: speechService.selectedLocale.identifier)
             }
         }
         .onDisappear {
@@ -97,17 +114,17 @@ struct WelcomeView: View {
             
             Spacer()
             
-            // Progress Indicator (Step X of 3)
+            // Progress Indicator (Step X of 4)
             progressDots
             
             Spacer()
             
-            // Contextual Secondary Action (Skip Practice on Screen 2)
-            if currentStep == .voiceTutorial {
+            // Contextual Secondary Action (Skip Practice on Screen 3)
+            if currentStep == .tryAsking {
                 Button {
                     skipPractice()
                 } label: {
-                    Text("Skip")
+                    Text(speechService.isIndonesian ? "Lewati" : "Skip")
                         .font(.body)
                         .fontWeight(.medium)
                         .foregroundStyle(.secondary)
@@ -119,8 +136,8 @@ struct WelcomeView: View {
                         )
                 }
                 .frame(width: 60, height: 32, alignment: .trailing)
-                .accessibilityLabel("Skip voice practice")
-                .accessibilityHint("Advances directly to the final step.")
+                .accessibilityLabel(speechService.isIndonesian ? "Lewati latihan suara" : "Skip voice practice")
+                .accessibilityHint(speechService.isIndonesian ? "Langsung lanjut ke langkah terakhir." : "Advances directly to the final step.")
             } else {
                 Color.clear
                     .frame(width: 60, height: 32)
@@ -138,50 +155,64 @@ struct WelcomeView: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Step \(currentStep.rawValue + 1) of \(OnboardingStep.allCases.count)")
+        .accessibilityLabel(speechService.isIndonesian
+            ? "Langkah \(currentStep.rawValue + 1) dari \(OnboardingStep.allCases.count)"
+            : "Step \(currentStep.rawValue + 1) of \(OnboardingStep.allCases.count)")
         .animation(.easeInOut(duration: 0.25), value: currentStep)
     }
     
-    // MARK: - Screen 1: Introduction Content
+    // MARK: - Screen 1: Welcome Content
     
-    private var introductionContent: some View {
-        VStack(spacing: 24) {
+    private var welcomeContent: some View {
+        VStack(spacing: 20) {
             ZStack {
                 Circle()
                     .fill(Color.blue.opacity(0.12))
-                    .frame(width: 96, height: 96)
+                    .frame(width: 80, height: 80)
                 
                 Image(systemName: "eye.circle.fill")
-                    .font(.system(size: 56, weight: .regular))
+                    .font(.system(size: 48, weight: .regular))
                     .foregroundStyle(.blue)
             }
             .accessibilityHidden(true)
             
-            VStack(spacing: 10) {
-                Text("Meet your visual assistant")
-                    .font(.largeTitle)
+            VStack(spacing: 8) {
+                Text(speechService.isIndonesian ? "Asisten visual Anda" : "Meet your visual assistant")
+                    .font(.title)
                     .fontWeight(.bold)
                     .multilineTextAlignment(.center)
                     .accessibilityAddTraits(.isHeader)
                 
-                Text("Point your camera at anything around you and ask questions to get clear spoken answers.")
-                    .font(.title3)
+                Text(speechService.isIndonesian
+                     ? "Arahkan kamera ke objek di sekitar Anda dan ajukan pertanyaan untuk mendengar jawaban suara yang jelas."
+                     : "Point your camera at anything around you and ask questions to get clear spoken answers.")
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 8)
             }
             
             // Feature Highlights
-            VStack(alignment: .leading, spacing: 14) {
-                featureRow(icon: "camera.fill", title: "Visual Understanding", description: "Describes objects, text, and details in your surroundings.")
-                featureRow(icon: "waveform", title: "Natural Voice", description: "Hold the bottom of the screen to ask questions in your own words.")
+            VStack(alignment: .leading, spacing: 12) {
+                featureRow(
+                    icon: "camera.fill",
+                    title: speechService.isIndonesian ? "Pemahaman Visual" : "Visual Understanding",
+                    description: speechService.isIndonesian ? "Menjelaskan objek, teks, dan detail di lingkungan sekitar Anda." : "Describes objects, text, and details in your surroundings."
+                )
+                featureRow(
+                    icon: "waveform",
+                    title: speechService.isIndonesian ? "Suara Alami" : "Natural Voice",
+                    description: speechService.isIndonesian ? "Tahan bagian bawah layar untuk bertanya dengan kata-kata Anda sendiri." : "Hold the bottom of the screen to ask questions in your own words."
+                )
             }
-            .padding(.top, 6)
-            .padding(.horizontal, 8)
+            .padding(.top, 4)
+            .padding(.horizontal, 4)
         }
         .padding(.horizontal, 24)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Welcome to TestApp, your visual assistant. TestApp uses your camera and microphone to describe what is around you. Point your camera at anything around you and ask questions to get clear spoken answers. Tap the Set Up Permissions button at the bottom of the screen to get started.")
+        .accessibilityLabel(speechService.isIndonesian
+            ? "Selamat datang di TestApp, asisten visual Anda. TestApp menggunakan kamera dan mikrofon untuk mendeskripsikan lingkungan Anda. Arahkan kamera ke objek dan tanyakan apa pun. Ketuk tombol Lanjutkan di bagian bawah layar untuk memulai pengaturan."
+            : "Welcome to TestApp, your visual assistant. TestApp uses your camera and microphone to describe what is around you. Point your camera at anything around you and ask questions to get clear spoken answers. Tap the Continue button at the bottom of the screen to begin setup.")
     }
     
     private func featureRow(icon: String, title: String, description: String) -> some View {
@@ -204,20 +235,156 @@ struct WelcomeView: View {
         }
     }
     
-    // MARK: - Screen 2: Interactive Voice Tutorial Content
+    // MARK: - Screen 2: Central Permissions & Setup Content (Static / Unscrollable)
     
-    private var voiceTutorialContent: some View {
-        VStack(spacing: 18) {
-            // Heading & instructions
-            VStack(spacing: 10) {
-                Text("Try asking a question")
-                    .font(.title)
+    private var permissionsSetupContent: some View {
+        VStack(spacing: 12) {
+            
+            // Screen Header
+            VStack(spacing: 6) {
+                ZStack {
+                    Circle()
+                        .fill(Color.blue.opacity(0.12))
+                        .frame(width: 56, height: 56)
+                    
+                    Image(systemName: "checklist")
+                        .font(.system(size: 28, weight: .semibold))
+                        .foregroundStyle(.blue)
+                }
+                .accessibilityHidden(true)
+                
+                Text(speechService.isIndonesian ? "Atur TestApp" : "Set Up TestApp")
+                    .font(.title2)
                     .fontWeight(.bold)
                     .multilineTextAlignment(.center)
                     .accessibilityAddTraits(.isHeader)
                 
-                Text("Touch and hold the microphone at the bottom of the screen while speaking, then release when finished.")
-                    .font(.body)
+                Text(speechService.isIndonesian
+                     ? "Aktifkan izin wajib dan atur akses cepat opsional."
+                     : "Enable required permissions and configure optional quick access.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 12)
+            }
+            
+            // Section 1: Required Permissions
+            VStack(alignment: .leading, spacing: 8) {
+                Text(speechService.isIndonesian ? "Izin Wajib" : "Required Permissions")
+                    .font(.caption)
+                    .fontWeight(.bold)
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                    .padding(.horizontal, 4)
+                
+                permissionCard(
+                    icon: "camera.fill",
+                    title: speechService.isIndonesian ? "Akses Kamera" : "Camera Access",
+                    description: speechService.isIndonesian
+                        ? "Untuk melihat dan mendeskripsikan objek di sekitar Anda."
+                        : "To see and describe objects in your surroundings.",
+                    isGranted: cameraAuthorized
+                )
+                
+                permissionCard(
+                    icon: "mic.fill",
+                    title: speechService.isIndonesian ? "Mikrofon & Suara" : "Microphone & Speech",
+                    description: speechService.isIndonesian
+                        ? "Untuk mendengar dan mengenali pertanyaan Anda."
+                        : "To hear and transcribe your spoken questions.",
+                    isGranted: micAndSpeechAuthorized
+                )
+            }
+            
+            // Section 2: Optional Quick Access Setup
+            VStack(alignment: .leading, spacing: 8) {
+                Text(speechService.isIndonesian ? "Akses Cepat (Opsional)" : "Quick Access (Optional)")
+                    .font(.caption)
+                    .fontWeight(.bold)
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                    .padding(.horizontal, 4)
+                
+                QuickAccessOnboardingCardView(
+                    isIndonesian: speechService.isIndonesian,
+                    hasCompletedSetup: hasCompletedQuickAccessSetup,
+                    onSetupTapped: {
+                        showQuickAccessSheet = true
+                    },
+                    onResetTapped: {
+                        hasCompletedQuickAccessSetup = false
+                    }
+                )
+            }
+        }
+        .padding(.horizontal, 20)
+        .accessibilityElement(children: .contain)
+    }
+    
+    private func permissionCard(icon: String, title: String, description: String, isGranted: Bool) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(isGranted ? Color.green.opacity(0.15) : Color.blue.opacity(0.12))
+                    .frame(width: 38, height: 38)
+                
+                Image(systemName: isGranted ? "checkmark" : icon)
+                    .font(.subheadline.bold())
+                    .foregroundStyle(isGranted ? Color.green : Color.blue)
+            }
+            .accessibilityHidden(true)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    
+                    Text(isGranted
+                         ? (speechService.isIndonesian ? "Diizinkan" : "Granted")
+                         : (speechService.isIndonesian ? "Wajib" : "Required"))
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                        .foregroundStyle(isGranted ? Color.green : Color.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule().fill(isGranted ? Color.green.opacity(0.12) : Color(.systemGray5))
+                        )
+                }
+                
+                Text(description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            
+            Spacer()
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Color(.secondarySystemBackground))
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title): \(isGranted ? (speechService.isIndonesian ? "Sudah diizinkan" : "Granted") : (speechService.isIndonesian ? "Izin diperlukan" : "Required permission")). \(description)")
+    }
+    
+    // MARK: - Screen 3: Interactive Voice Tutorial Content (Try Asking)
+    
+    private var tryAskingContent: some View {
+        VStack(spacing: 18) {
+            // Heading & instructions
+            VStack(spacing: 8) {
+                Text(speechService.isIndonesian ? "Coba ajukan pertanyaan" : "Try asking a question")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .multilineTextAlignment(.center)
+                    .accessibilityAddTraits(.isHeader)
+                
+                Text(speechService.isIndonesian
+                     ? "Sentuh dan tahan mikrofon di bagian bawah layar sambil berbicara, lalu lepaskan jika selesai."
+                     : "Touch and hold the microphone at the bottom of the screen while speaking, then release when finished.")
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 8)
@@ -248,18 +415,18 @@ struct WelcomeView: View {
                     .font(.subheadline)
                     .foregroundStyle(.blue)
                 
-                Text("Try saying:")
+                Text(speechService.isIndonesian ? "Coba katakan:" : "Try saying:")
                     .font(.subheadline)
                     .fontWeight(.medium)
                     .foregroundStyle(.secondary)
             }
             
-            Text("\"What is this?\"")
+            Text(speechService.isIndonesian ? "\"Apa ini?\"" : "\"What is this?\"")
                 .font(.title2)
                 .fontWeight(.bold)
                 .foregroundStyle(.blue)
             
-            Text("or ask about anything nearby")
+            Text(speechService.isIndonesian ? "atau tanyakan tentang apa pun di dekat Anda" : "or ask about anything nearby")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }
@@ -271,7 +438,9 @@ struct WelcomeView: View {
                 .fill(Color(.secondarySystemBackground))
         )
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Suggested question: What is this? Touch and hold the microphone at the bottom of the screen to ask.")
+        .accessibilityLabel(speechService.isIndonesian
+            ? "Contoh pertanyaan yang dapat Anda coba: Apa ini?, atau tanyakan tentang apa pun di dekat Anda. Tahan mikrofon di bagian bawah layar untuk mencoba."
+            : "Suggested question: What is this?, or ask about anything nearby. Hold the microphone at the bottom of the screen to try.")
     }
     
     private func successFeedbackCard(transcript: String) -> some View {
@@ -287,7 +456,7 @@ struct WelcomeView: View {
             }
             
             VStack(spacing: 4) {
-                Text("You asked:")
+                Text(speechService.isIndonesian ? "Anda bertanya:" : "You asked:")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 
@@ -298,7 +467,9 @@ struct WelcomeView: View {
                     .lineLimit(2)
             }
             
-            Text("That is how you ask TestApp questions. In the live camera, you'll receive a spoken answer instantly.")
+            Text(speechService.isIndonesian
+                 ? "Begitulah cara Anda bertanya di TestApp. Di kamera langsung, Anda akan langsung mendengar jawaban suara."
+                 : "That is how you ask TestApp questions. In the live camera, you'll receive a spoken answer instantly.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -312,7 +483,9 @@ struct WelcomeView: View {
                 .fill(Color(.secondarySystemBackground))
         )
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Practice successful. You asked: \(transcript). Tap Continue at the bottom of the screen to finish setup.")
+        .accessibilityLabel(speechService.isIndonesian
+            ? "Latihan berhasil. Anda bertanya: \(transcript). Ketuk Lanjutkan di bagian bawah layar untuk menyelesaikan."
+            : "Practice successful. You asked: \(transcript). Tap Continue at the bottom of the screen to finish setup.")
     }
     
     private var emptyFeedbackCard: some View {
@@ -321,11 +494,13 @@ struct WelcomeView: View {
                 .font(.title2)
                 .foregroundStyle(.orange)
             
-            Text("I didn't hear a question.")
+            Text(speechService.isIndonesian ? "Pertanyaan tidak terdengar." : "I didn't hear a question.")
                 .font(.headline)
                 .fontWeight(.semibold)
             
-            Text("Hold the microphone at the bottom and speak clearly, or tap Skip at the top.")
+            Text(speechService.isIndonesian
+                 ? "Tahan mikrofon di bagian bawah dan bicaralah dengan jelas, atau ketuk Lewati di atas."
+                 : "Hold the microphone at the bottom and speak clearly, or tap Skip at the top.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -338,7 +513,9 @@ struct WelcomeView: View {
                 .fill(Color(.secondarySystemBackground))
         )
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("I didn't hear a question. Hold the microphone at the bottom of the screen to try again, or tap Skip in the top right.")
+        .accessibilityLabel(speechService.isIndonesian
+            ? "Pertanyaan tidak terdengar. Tahan mikrofon di bagian bawah layar untuk mencoba lagi, atau ketuk Lewati di kanan atas."
+            : "I didn't hear a question. Hold the microphone at the bottom of the screen to try again, or tap Skip in the top right.")
     }
     
     private var unavailableFeedbackCard: some View {
@@ -347,11 +524,13 @@ struct WelcomeView: View {
                 .font(.title2)
                 .foregroundStyle(.secondary)
             
-            Text("Microphone access is needed")
+            Text(speechService.isIndonesian ? "Izin mikrofon diperlukan" : "Microphone access is needed")
                 .font(.headline)
                 .fontWeight(.semibold)
             
-            Text("You can enable microphone permission in iOS Settings to ask questions.")
+            Text(speechService.isIndonesian
+                 ? "Anda dapat mengaktifkan izin mikrofon di Pengaturan iOS untuk bertanya."
+                 : "You can enable microphone permission in iOS Settings to ask questions.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -364,49 +543,52 @@ struct WelcomeView: View {
                 .fill(Color(.secondarySystemBackground))
         )
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Microphone access is needed. You can enable microphone permission in iOS Settings.")
+        .accessibilityLabel(speechService.isIndonesian
+            ? "Izin mikrofon diperlukan. Anda dapat mengaktifkannya di Pengaturan iOS."
+            : "Microphone access is needed. You can enable microphone permission in iOS Settings.")
     }
     
-    // MARK: - Screen 3: Ready Content
+    // MARK: - Screen 4: Ready Content (Get Started - Static / Unscrollable)
     
     private var readyContent: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: 16) {
             ZStack {
                 Circle()
                     .fill(Color.green.opacity(0.12))
-                    .frame(width: 96, height: 96)
+                    .frame(width: 64, height: 64)
                 
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 56, weight: .regular))
+                    .font(.system(size: 38, weight: .regular))
                     .foregroundStyle(.green)
             }
             .accessibilityHidden(true)
             
-            VStack(spacing: 10) {
-                Text("You're ready")
-                    .font(.largeTitle)
+            VStack(spacing: 6) {
+                Text(speechService.isIndonesian ? "Anda sudah siap" : "You're ready")
+                    .font(.title)
                     .fontWeight(.bold)
                     .multilineTextAlignment(.center)
                     .accessibilityAddTraits(.isHeader)
                 
-                Text("Point your camera at anything and hold the bottom area to ask questions such as:")
-                    .font(.title3)
+                Text(speechService.isIndonesian
+                     ? "Arahkan kamera ke objek di sekitar Anda dan tahan area bawah untuk bertanya."
+                     : "Point your camera at anything and hold the bottom area to ask questions.")
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 8)
             }
             
             // Example question cards
-            VStack(spacing: 10) {
-                exampleCard(icon: "questionmark.circle.fill", text: "\"What is this?\"")
-                exampleCard(icon: "info.circle.fill", text: "\"What is it used for?\"")
-                exampleCard(icon: "doc.text.viewfinder", text: "\"What does this label say?\"")
+            VStack(spacing: 8) {
+                exampleCard(icon: "questionmark.circle.fill", text: speechService.isIndonesian ? "\"Apa ini?\"" : "\"What is this?\"")
+                exampleCard(icon: "info.circle.fill", text: speechService.isIndonesian ? "\"Untuk apa benda ini?\"" : "\"What is it used for?\"")
+                exampleCard(icon: "doc.text.viewfinder", text: speechService.isIndonesian ? "\"Apa tulisan di label ini?\"" : "\"What does this label say?\"")
             }
-            .padding(.horizontal, 8)
+            .padding(.horizontal, 4)
         }
-        .padding(.horizontal, 24)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("You are ready. Point your camera at anything and hold the bottom of the screen to ask what you would like to know. For example: What is this? What is it used for? Or: What does this label say? Tap the Get Started button at the bottom of the screen to open the live camera.")
+        .padding(.horizontal, 20)
+        .accessibilityElement(children: .contain)
     }
     
     private func exampleCard(icon: String, text: String) -> some View {
@@ -435,12 +617,12 @@ struct WelcomeView: View {
     @ViewBuilder
     private var bottomInteractionZone: some View {
         switch currentStep {
-        case .introduction:
-            // Screen 1: Set Up Permissions Button
+        case .welcome:
+            // Screen 1: Continue Button to Setup Page
             Button {
                 advanceStep()
             } label: {
-                Text("Set Up Permissions")
+                Text(speechService.isIndonesian ? "Lanjutkan" : "Continue")
                     .font(.title3)
                     .fontWeight(.bold)
                     .frame(maxWidth: .infinity)
@@ -448,17 +630,37 @@ struct WelcomeView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .accessibilityLabel("Set Up Permissions")
-            .accessibilityHint("Requests camera and microphone permissions, then proceeds to practice asking a question.")
+            .accessibilityLabel(speechService.isIndonesian ? "Lanjutkan" : "Continue")
+            .accessibilityHint(speechService.isIndonesian
+                ? "Membuka halaman pengaturan izin dan akses cepat."
+                : "Opens the permissions and quick access setup page.")
             
-        case .voiceTutorial:
-            // Screen 2: Contextual Bottom Interaction
+        case .permissionsSetup:
+            // Screen 2: Continue to Try Asking
+            Button {
+                advanceStep()
+            } label: {
+                Text(speechService.isIndonesian ? "Lanjutkan" : "Continue")
+                    .font(.title3)
+                    .fontWeight(.bold)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .accessibilityLabel(speechService.isIndonesian ? "Lanjutkan" : "Continue")
+            .accessibilityHint(speechService.isIndonesian
+                ? "Menyimpan pengaturan dan lanjut ke latihan bertanya."
+                : "Proceeds to voice question practice.")
+            
+        case .tryAsking:
+            // Screen 3: Contextual Bottom Interaction (Voice Area or Continue button)
             if case .success = tutorialState {
-                // When practice has been completed: Prominent Continue button in bottom zone
+                // When practice completed: Continue button
                 Button {
                     advanceStep()
                 } label: {
-                    Text("Continue")
+                    Text(speechService.isIndonesian ? "Lanjutkan" : "Continue")
                         .font(.title3)
                         .fontWeight(.bold)
                         .frame(maxWidth: .infinity)
@@ -466,19 +668,19 @@ struct WelcomeView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .accessibilityLabel("Continue")
-                .accessibilityHint("Advances to the final step.")
+                .accessibilityLabel(speechService.isIndonesian ? "Lanjutkan" : "Continue")
+                .accessibilityHint(speechService.isIndonesian ? "Lanjut ke langkah terakhir." : "Advances to the final step.")
             } else {
                 // Primary interaction: Voice Area (Exact match with CameraView's bottom voice area)
                 onboardingVoiceArea
             }
             
         case .ready:
-            // Screen 3: Get Started Button
+            // Screen 4: Get Started Button
             Button {
                 advanceStep()
             } label: {
-                Text("Get Started")
+                Text(speechService.isIndonesian ? "Mulai" : "Get Started")
                     .font(.title3)
                     .fontWeight(.bold)
                     .frame(maxWidth: .infinity)
@@ -486,8 +688,10 @@ struct WelcomeView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .accessibilityLabel("Get Started")
-            .accessibilityHint("Completes onboarding and opens the live camera viewfinder.")
+            .accessibilityLabel(speechService.isIndonesian ? "Mulai" : "Get Started")
+            .accessibilityHint(speechService.isIndonesian
+                ? "Menyelesaikan orientasi dan membuka kamera langsung."
+                : "Completes onboarding and opens the live camera viewfinder.")
         }
     }
     
@@ -536,7 +740,7 @@ struct WelcomeView: View {
                         .foregroundStyle(.white.opacity(0.85))
                         .lineLimit(1)
                 } else if tutorialState == .idle || tutorialState == .empty {
-                    Text("\"What is this?\"")
+                    Text(speechService.isIndonesian ? "\"Apa ini?\"" : "\"What is this?\"")
                         .font(.caption)
                         .foregroundStyle(.white.opacity(0.5))
                         .italic()
@@ -604,51 +808,66 @@ struct WelcomeView: View {
     private var voiceAreaLabel: String {
         switch tutorialState {
         case .idle, .empty:
-            return "Hold and ask a question"
+            return speechService.isIndonesian ? "Tahan dan ajukan pertanyaan" : "Hold and ask a question"
         case .listening:
-            return "Listening…"
+            return speechService.isIndonesian ? "Mendengarkan…" : "Listening…"
         case .processing:
-            return "Thinking…"
+            return speechService.isIndonesian ? "Memproses…" : "Thinking…"
         case .success:
-            return "Done"
+            return speechService.isIndonesian ? "Selesai" : "Done"
         case .unavailable:
-            return "Microphone unavailable"
+            return speechService.isIndonesian ? "Mikrofon tidak tersedia" : "Microphone unavailable"
         }
     }
     
     private var voiceAreaAccessibilityLabel: String {
         switch tutorialState {
         case .listening:
-            return "Recording question"
+            return speechService.isIndonesian ? "Merekam pertanyaan" : "Recording question"
         case .processing:
-            return "Processing question"
+            return speechService.isIndonesian ? "Menganalisis pertanyaan" : "Processing question"
         case .success(let t):
-            return "Practice complete. You said: \(t)."
+            return speechService.isIndonesian ? "Latihan selesai. Anda berkata: \(t)." : "Practice complete. You said: \(t)."
         case .empty:
-            return "Try asking again"
+            return speechService.isIndonesian ? "Coba bertanya lagi" : "Try asking again"
         case .unavailable:
-            return "Voice practice unavailable"
+            return speechService.isIndonesian ? "Latihan suara tidak tersedia" : "Voice practice unavailable"
         case .idle:
-            return "Practice asking a question"
+            return speechService.isIndonesian ? "Latihan mengajukan pertanyaan" : "Practice asking a question"
         }
     }
     
     private var voiceAreaAccessibilityHint: String {
         switch tutorialState {
         case .listening:
-            return "Double-tap to stop recording, or release hold."
+            return speechService.isIndonesian ? "Ketuk dua kali untuk berhenti merekam, atau lepaskan sentuhan." : "Double-tap to stop recording, or release hold."
         case .processing:
-            return "Please wait while your question is analyzed."
+            return speechService.isIndonesian ? "Harap tunggu sementara pertanyaan Anda dianalisis." : "Please wait while your question is analyzed."
         case .success:
-            return "Double-tap to practice asking again, or tap Continue below."
+            return speechService.isIndonesian ? "Ketuk dua kali untuk berlatih lagi, atau ketuk Lanjutkan di bawah." : "Double-tap to practice asking again, or tap Continue below."
         case .idle, .empty:
-            return "Double-tap to start speaking, or press and hold the bottom of the screen while speaking."
+            return speechService.isIndonesian ? "Ketuk dua kali untuk mulai berbicara, atau tekan dan tahan bagian bawah layar." : "Double-tap to start speaking, or press and hold the bottom of the screen while speaking."
         case .unavailable:
-            return "Tap Skip in the top right to continue."
+            return speechService.isIndonesian ? "Ketuk Lewati di kanan atas untuk melanjutkan." : "Tap Skip in the top right to continue."
         }
     }
     
-    // MARK: - Proactive Permissions Setup
+    // MARK: - Permissions Helper
+    
+    private func updatePermissionStatuses() {
+        let camStatus = AVCaptureDevice.authorizationStatus(for: .video)
+        cameraAuthorized = (camStatus == .authorized)
+        
+        let micStatus: Bool
+        if #available(iOS 17.0, *) {
+            micStatus = (AVAudioApplication.shared.recordPermission == .granted)
+        } else {
+            micStatus = (AVAudioSession.sharedInstance().recordPermission == .granted)
+        }
+        
+        let speechStatus = SFSpeechRecognizer.authorizationStatus()
+        micAndSpeechAuthorized = micStatus && (speechStatus == .authorized)
+    }
     
     private func requestAllPermissions() async -> Bool {
         // 1. Camera permission
@@ -667,7 +886,8 @@ struct WelcomeView: View {
         
         await MainActor.run {
             self.permissionsChecked = true
-            self.hasPermissions = speechGranted
+            self.cameraAuthorized = cameraGranted
+            self.micAndSpeechAuthorized = speechGranted
         }
         
         return cameraGranted && speechGranted
@@ -682,21 +902,27 @@ struct WelcomeView: View {
             tutorialState = .listening
         }
         
-        AccessibilityVoiceService.shared.speak("Listening.")
+        AccessibilityVoiceService.shared.speak(
+            speechService.isIndonesian ? "Mendengarkan." : "Listening.",
+            languageCode: speechService.selectedLocale.identifier
+        )
         
         Task {
             if !permissionsChecked {
                 _ = await requestAllPermissions()
             }
             
-            guard hasPermissions else {
+            guard micAndSpeechAuthorized else {
                 await MainActor.run {
                     isHolding = false
                     withAnimation(.easeInOut(duration: 0.2)) {
                         tutorialState = .unavailable
                     }
                     AccessibilityVoiceService.shared.speak(
-                        "Microphone permission was not granted. Tap Skip at the top right to continue."
+                        speechService.isIndonesian
+                            ? "Izin mikrofon tidak diberikan. Ketuk Lewati di kanan atas untuk lanjut."
+                            : "Microphone permission was not granted. Tap Skip at the top right to continue.",
+                        languageCode: speechService.selectedLocale.identifier
                     )
                 }
                 return
@@ -723,7 +949,10 @@ struct WelcomeView: View {
                         tutorialState = .empty
                     }
                     AccessibilityVoiceService.shared.speak(
-                        "I didn't hear a question. Hold the microphone at the bottom to try again, or tap Skip at the top right."
+                        speechService.isIndonesian
+                            ? "Pertanyaan tidak terdengar. Tahan mikrofon di bagian bawah untuk mencoba lagi, atau ketuk Lewati di kanan atas."
+                            : "I didn't hear a question. Hold the microphone at the bottom to try again, or tap Skip at the top right.",
+                        languageCode: speechService.selectedLocale.identifier
                     )
                 }
                 return
@@ -734,7 +963,10 @@ struct WelcomeView: View {
                     tutorialState = .success(transcript)
                 }
                 AccessibilityVoiceService.shared.speak(
-                    "Great job! You asked: \(transcript). Tap Continue at the bottom of the screen to finish setup."
+                    speechService.isIndonesian
+                        ? "Bagus sekali! Anda bertanya: \(transcript). Ketuk Lanjutkan di bagian bawah layar untuk menyelesaikan."
+                        : "Great job! You asked: \(transcript). Tap Continue at the bottom of the screen to finish setup.",
+                    languageCode: speechService.selectedLocale.identifier
                 )
             }
         }
@@ -748,42 +980,63 @@ struct WelcomeView: View {
             currentStep = .ready
         }
         AccessibilityVoiceService.shared.speak(
-            "Step 3 of 3: You are ready! Point your camera at anything, touch and hold the bottom of the screen to ask what you would like to know, and release to hear an answer. Tap Get Started at the bottom of the screen to open the camera."
+            speechService.isIndonesian
+                ? "Langkah 4 dari 4: Anda siap! Arahkan kamera ke objek, tahan bagian bawah layar untuk bertanya, dan lepaskan untuk mendengar jawaban. Ketuk Mulai di bawah untuk membuka kamera."
+                : "Step 4 of 4: You are ready! Point your camera at anything, touch and hold the bottom of the screen to ask what you would like to know, and release to hear an answer. Tap Get Started at the bottom of the screen to open the camera.",
+            languageCode: speechService.selectedLocale.identifier
         )
     }
     
     private func advanceStep() {
-        if currentStep == .introduction {
+        switch currentStep {
+        case .welcome:
+            // Advance from Welcome -> Permissions / Setup
+            withAnimation(.easeInOut(duration: 0.35)) {
+                currentStep = .permissionsSetup
+            }
+            updatePermissionStatuses()
+            AccessibilityVoiceService.shared.speak(
+                speechService.isIndonesian
+                    ? "Langkah 2 dari 4: Atur TestApp. Aktifkan izin kamera dan mikrofon, serta atur Akses Cepat untuk Tombol Tindakan. Ketuk Lanjutkan jika sudah siap."
+                    : "Step 2 of 4: Set Up TestApp. Enable camera and microphone permissions, and optionally set up Quick Access for your Action Button. Tap Continue when ready.",
+                languageCode: speechService.selectedLocale.identifier
+            )
+            
+        case .permissionsSetup:
+            // Advance from Permissions / Setup -> Try Asking
             Task {
-                AccessibilityVoiceService.shared.speak("Setting up camera and microphone access. Please allow permissions when prompted.")
-                _ = await requestAllPermissions()
+                if !cameraAuthorized || !micAndSpeechAuthorized {
+                    _ = await requestAllPermissions()
+                }
                 await MainActor.run {
                     withAnimation(.easeInOut(duration: 0.35)) {
-                        currentStep = .voiceTutorial
+                        currentStep = .tryAsking
                     }
                     AccessibilityVoiceService.shared.speak(
-                        "Step 2 of 3: Try asking a question. Touch and hold the microphone at the bottom of the screen while speaking, then release when finished. For example, ask: What is this? Or tap Skip in the top right to continue."
+                        speechService.isIndonesian
+                            ? "Langkah 3 dari 4: Coba ajukan pertanyaan. Sentuh dan tahan mikrofon di bagian bawah layar sambil berbicara, lalu lepaskan. Contohnya, tanyakan: Apa ini? Atau ketuk Lewati di kanan atas untuk lanjut."
+                            : "Step 3 of 4: Try asking a question. Touch and hold the microphone at the bottom of the screen while speaking, then release when finished. For example, ask: What is this? Or tap Skip in the top right to continue.",
+                        languageCode: speechService.selectedLocale.identifier
                     )
                 }
             }
-            return
-        }
-        
-        // Clean up speech if leaving tutorial
-        if currentStep == .voiceTutorial {
+            
+        case .tryAsking:
+            // Advance from Try Asking -> Ready
             speechService.cancelRecording()
-        }
-        
-        withAnimation(.easeInOut(duration: 0.35)) {
-            switch currentStep {
-            case .introduction:
-                break
-            case .voiceTutorial:
+            withAnimation(.easeInOut(duration: 0.35)) {
                 currentStep = .ready
-                AccessibilityVoiceService.shared.speak(
-                    "Step 3 of 3: You are ready! Point your camera at anything, touch and hold the bottom of the screen to ask what you would like to know, and release to hear an answer. Tap Get Started at the bottom of the screen to open the camera."
-                )
-            case .ready:
+            }
+            AccessibilityVoiceService.shared.speak(
+                speechService.isIndonesian
+                    ? "Langkah 4 dari 4: Anda siap! Arahkan kamera ke objek, tahan bagian bawah layar untuk bertanya, dan lepaskan untuk mendengar jawaban. Ketuk Mulai di bawah untuk membuka kamera."
+                    : "Step 4 of 4: You are ready! Point your camera at anything, touch and hold the bottom of the screen to ask what you would like to know, and release to hear an answer. Tap Get Started at the bottom of the screen to open the camera.",
+                languageCode: speechService.selectedLocale.identifier
+            )
+            
+        case .ready:
+            // Complete onboarding
+            withAnimation(.easeInOut(duration: 0.35)) {
                 hasCompletedOnboarding = true
             }
         }

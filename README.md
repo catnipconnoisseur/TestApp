@@ -28,9 +28,13 @@ POINT CAMERA → TOUCH & HOLD TO ASK → REASONING & EVIDENCE FUSION → CONCISE
 
 ## 🔑 Key Features & Capabilities
 
-* **Onboarding & Spatial Interaction Anchor:**
-  * 3-step accessible onboarding (`WelcomeView`) establishing a consistent **Bottom Interaction Zone** matching the live camera experience.
-  * Proactive camera and microphone permission setup before interactive tutorials.
+* **Hardware Quick Access & System-Level Integration:**
+  * Physical iPhone **Action Button** mapping and **Siri App Shortcuts** (*"Ask TestApp"*, *"Tanya TestApp"*).
+  * Direct foreground launch into live visual assistance with immediate spoken arrival announcement.
+  * Powered by `AppIntents`, `AppShortcutsProvider`, and `QuickAccessIntent`.
+* **Central Onboarding & Setup Hub:**
+  * 4-step static, unscrollable onboarding (`WelcomeView`): `Welcome → Permissions & Setup Hub → Try Asking → Get Started`.
+  * Central setup hub managing required permissions (Camera, Microphone, Speech) and optional Action Button configuration.
   * Live on-device practice area with real-time speech transcription and haptic feedback.
 * **Camera-First Live Experience:**
   * High-speed, low-latency live camera viewfinder with Apple Vision continuous OCR and classification.
@@ -42,10 +46,10 @@ POINT CAMERA → TOUCH & HOLD TO ASK → REASONING & EVIDENCE FUSION → CONCISE
 * **Physical Deformation & Banknote Robustness:**
   * Multi-signal currency synthesis combining color signatures (e.g. Red=Rp100k, Blue=Rp50k), national hero portraits, on-device OCR, and emblem layouts.
   * Robust recognition of wrinkled, folded, creased, angled, and partially occluded banknotes.
-* **Accessibility-First Design:**
+* **Accessibility-First & Bilingual Design:**
+  * Seamless English (`en-US`) and Indonesian (`id-ID`) language switching across speech input, Gemini prompts, and TTS voice output.
   * Unified audio management via `AccessibilityVoiceService` coordinating VoiceOver speech output, audio session ducking, and haptic feedback.
-  * Native VoiceOver accessibility actions (focus → double-tap to record → double-tap to finish).
-  * Actions rotor support to repeat previous answers on demand.
+  * Spatial anchor consistency (120pt bottom touch card across all views).
 
 ---
 
@@ -54,37 +58,41 @@ POINT CAMERA → TOUCH & HOLD TO ASK → REASONING & EVIDENCE FUSION → CONCISE
 ```text
 TestApp/
 ├── App/
-│   └── TestAppApp.swift
+│   └── TestAppApp.swift                  # App entry & AppShortcut parameter registration
 │
 ├── Features/
 │   ├── Home/
-│   │   └── WelcomeView.swift                  # 3-step onboarding with bottom interaction zone
+│   │   └── WelcomeView.swift              # 4-step static onboarding & central setup hub
+│   │
+│   ├── QuickAccess/
+│   │   ├── QuickAccessIntent.swift        # AppIntent & AppShortcutsProvider (Action Button)
+│   │   └── QuickAccessGuideView.swift     # Compact setup sheet & onboarding card
 │   │
 │   ├── Camera/
-│   │   ├── CameraView.swift                   # Main live camera & multimodal voice interface
-│   │   └── CameraManager.swift                # AVFoundation session & 1280px frame capture
+│   │   ├── CameraView.swift               # Main live camera & multimodal voice interface
+│   │   └── CameraManager.swift            # AVFoundation session & 1280px frame capture
 │   │
 │   ├── Recognition/
-│   │   ├── VisionService.swift                # Apple Vision OCR (id-ID) & image classification
-│   │   └── RecognitionResult.swift            # Observation data models & text candidates
+│   │   ├── VisionService.swift            # Apple Vision OCR (id-ID) & image classification
+│   │   └── RecognitionResult.swift        # Observation data models & text candidates
 │   │
 │   ├── Multimodal/
-│   │   ├── MultimodalService.swift            # Gemini 2.5 Flash REST client & accessibility prompts
-│   │   ├── MultimodalConfig.swift             # Dynamic API key & model settings
-│   │   └── Secrets.swift                      # Secure local API key configuration
+│   │   ├── MultimodalService.swift        # Gemini 2.5 Flash REST client & accessibility prompts
+│   │   ├── MultimodalConfig.swift         # Dynamic API key & model settings
+│   │   └── Secrets.swift                  # Secure local API key configuration
 │   │
 │   ├── Interpretation/
-│   │   ├── InterpretationService.swift        # Multi-signal evidence fusion & currency synthesis
-│   │   └── InterpretationResult.swift         # Structured plain-text interpretation models
+│   │   ├── InterpretationService.swift    # Multi-signal evidence fusion & currency synthesis
+│   │   └── InterpretationResult.swift     # Structured plain-text interpretation models
 │   │
 │   ├── Speech/
-│   │   ├── SpeechService.swift                # SFSpeechRecognizer on-device audio transcription
-│   │   └── AccessibilityVoiceService.swift    # VoiceOver audio output & announcement coordination
+│   │   ├── SpeechService.swift            # SFSpeechRecognizer on-device audio transcription
+│   │   └── AccessibilityVoiceService.swift# VoiceOver audio output & announcement coordination
 │   │
 │   └── Settings/
-│       └── SettingsView.swift                 # Locale selection & developer diagnostics
+│       └── SettingsView.swift             # Locale selection & developer diagnostics
 │
-├── docs/                                      # Persistent context documentation (uppercase)
+├── docs/                                  # Persistent context documentation (uppercase)
 │   ├── STRUCTURE.md
 │   ├── CONVENTIONS.md
 │   ├── DECISIONS.md
@@ -93,11 +101,11 @@ TestApp/
 │   ├── AI-BEHAVIOR.md
 │   └── TESTING.md
 │
-├── tickets/                                   # Development ticket tracking
+├── tickets/                               # Development ticket tracking
 │   ├── ROADMAP.md
 │   └── T001-BASELINE.md through T008...
 │
-├── AGENTS.md                                  # Root agent entry point & navigation
+├── AGENTS.md                              # Root agent entry point & navigation
 └── README.md
 ```
 
@@ -112,8 +120,9 @@ TestApp/
 - [x] **Interpretation & Decision Layer (Multi-Signal Fusion)** (`Complete`)
 - [x] **Reliability & Real-World Evaluation** (`Complete`)
 - [x] **Conversational Multimodal Interaction & Voice Queries** (`Complete`)
-- [x] **Accessibility Experience, VoiceOver Audit & Banknote Robustness** (`Complete`)
-- [ ] **Conversational Memory & Spatial Context Refinement** (`Planned`)
+- [x] **Accessibility Experience & Banknote Robustness** (`Complete`)
+- [x] **Quick Access, Action Button & Central Setup Hub** (`Complete`)
+- [ ] **Scene-Anchored Conversational Memory (T009)** (`Next`)
 - [ ] **Create ML Feasibility & Evaluation** (`Planned`)
 
 ---

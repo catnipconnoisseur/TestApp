@@ -7,6 +7,7 @@ struct SettingsView: View {
     @Binding var selectedLocale: Locale
     @Binding var showDeveloperDiagnostics: Bool
     @State private var apiKeyInput: String = MultimodalConfig.apiKey
+    @State private var showQuickAccessGuide = false
     
     @Environment(\.dismiss) private var dismiss
     
@@ -68,6 +69,43 @@ struct SettingsView: View {
                     Text("Your API key is stored locally on this device and is never shared.")
                 }
                 
+                // MARK: - Quick Access Section
+                
+                Section {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Label(selectedLocale.identifier.hasPrefix("id") ? "Tombol Tindakan & Pintasan" : "Action Button & Shortcuts", systemImage: "button.programmable")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        
+                        Text(selectedLocale.identifier.hasPrefix("id")
+                             ? "Buka TestApp secara instan tanpa mencari aplikasi di layar utama menggunakan Tombol Tindakan iPhone atau Siri."
+                             : "Open TestApp instantly without searching on your Home Screen using your iPhone's Action Button or Siri.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        
+                        Button {
+                            showQuickAccessGuide = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "slider.horizontal.3")
+                                Text(selectedLocale.identifier.hasPrefix("id") ? "Panduan Pengaturan Akses Cepat" : "Quick Access Setup Guide")
+                            }
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                        }
+                        .padding(.top, 2)
+                    }
+                    .padding(.vertical, 4)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(selectedLocale.identifier.hasPrefix("id") ? "Panduan Akses Cepat dan Tombol Tindakan" : "Quick Access and Action Button setup guide")
+                } header: {
+                    Text(selectedLocale.identifier.hasPrefix("id") ? "Akses Cepat" : "Quick Access")
+                } footer: {
+                    Text(selectedLocale.identifier.hasPrefix("id")
+                         ? "Anda juga dapat mengucapkan 'Hey Siri, Tanya TestApp' dari mana saja."
+                         : "You can also say 'Hey Siri, Ask TestApp' from anywhere.")
+                }
+                
                 // MARK: - Developer Section
                 
                 Section {
@@ -94,6 +132,9 @@ struct SettingsView: View {
                     }
                     .fontWeight(.semibold)
                 }
+            }
+            .sheet(isPresented: $showQuickAccessGuide) {
+                QuickAccessSetupSheet(isIndonesian: selectedLocale.identifier.hasPrefix("id"))
             }
         }
     }
