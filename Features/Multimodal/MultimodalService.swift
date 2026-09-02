@@ -184,12 +184,161 @@ final class MultimodalService: Sendable {
         """
     }
     
+    /// Constructs a structured prompt for follow-up conversational turns about the active physical scene.
+    static func buildFollowUpVoicePrompt(
+        userQuestion: String,
+        onDeviceHints: [String] = [],
+        locale: Locale = Locale(identifier: "en-US")
+    ) -> String {
+        let (languageDirective, headlineContract, descriptionContract) = buildLanguageDirective(for: locale)
+        
+        var hintsSection = ""
+        if !onDeviceHints.isEmpty {
+            hintsSection = """
+            
+            ON-DEVICE SENSOR OBSERVATIONS:
+            \(onDeviceHints.map { "- \($0)" }.joined(separator: "\n"))
+            """
+        }
+        
+        return """
+        You are an intelligent visual accessibility assistant continuing an active conversation about the same physical scene.
+        Answer the user's follow-up question directly, naturally, and concisely using progressive disclosure.
+        \(hintsSection)
+        FOLLOW-UP QUESTION:
+        "\(userQuestion)"
+
+        \(languageDirective)
+
+        FOLLOW-UP RULES:
+        1. Resolve references (like "it", "this", "that", "its color", "what is it used for", "read the text") using the active conversation history.
+        2. Answer ONLY what is asked in this turn. Do not repeat the initial identification from scratch.
+        3. Maintain physical deformation & currency recognition robustness.
+        4. Return plain text only without any Markdown syntax (no asterisks **, no hashes #, no bullets, no empty placeholders ****).
+
+        OUTPUT CONTRACT:
+        HEADLINE: \(headlineContract)
+        DESCRIPTION: \(descriptionContract)
+        """
+    }
+    
     // MARK: - Execution
     
     /// Sends a single JPEG frame to the Gemini multimodal endpoint and returns the natural language analysis.
     func analyzeImage(
         jpegData: Data,
         prompt: String = defaultPrompt,
+        apiKey: String
+    ) async -> MultimodalResult {
+        let base64Image = jpegData.base64EncodedString()
+        let payload: [String: Any] = [
+            "contents": [
+                [
+                    "parts": [
+                        ["text": prompt],
+                        [
+                            "inline_data": [
+                                "mime_type": "image/jpeg",
+                                "data": base64Image
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+        return await executeGeminiRequest(payload: payload, apiKey: apiKey)
+    }
+    
+    /// Performs scene-anchored multi-turn conversational visual reasoning.
+    func analyzeMultiTurn(
+        turns: [ConversationTurn],
+        currentQuestion: String,
+        currentImage: Data?,
+        onDeviceHints: [String] = [],
+        locale: Locale = Locale(identifier: "en-US"),
+        apiKey: String
+    ) async -> MultimodalResult {
+        var contentsArray: [[String: Any]] = []
+        
+        if turns.isEmpty {
+            // Turn 1: Single turn request
+            let prompt = Self.buildVoiceQuestionPrompt(
+                userQuestion: currentQuestion,
+                onDeviceHints: onDeviceHints,
+                locale: locale
+            )
+            var parts: [[String: Any]] = [["text": prompt]]
+            if let jpegData = currentImage {
+                parts.append([
+                    "inline_data": [
+                        "mime_type": "image/jpeg",
+                        "data": jpegData.base64EncodedString()
+                    ]
+                ])
+            }
+            contentsArray.append([
+                "role": "user",
+                "parts": parts
+            ])
+        } else {
+            // Multi-Turn: Reconstruct conversation history with alternating user/model turns
+            for (index, turn) in turns.enumerated() {
+                // User turn
+                let userPrompt: String
+                if index == 0 {
+                    userPrompt = Self.buildVoiceQuestionPrompt(
+                        userQuestion: turn.question,
+                        onDeviceHints: onDeviceHints,
+                        locale: locale
+                    )
+                } else {
+                    userPrompt = turn.question
+                }
+                
+                contentsArray.append([
+                    "role": "user",
+                    "parts": [["text": userPrompt]]
+                ])
+                
+                // Model turn
+                contentsArray.append([
+                    "role": "model",
+                    "parts": [["text": turn.rawAIResponse]]
+                ])
+            }
+            
+            // Current user turn
+            let currentPrompt = Self.buildFollowUpVoicePrompt(
+                userQuestion: currentQuestion,
+                onDeviceHints: onDeviceHints,
+                locale: locale
+            )
+            var currentParts: [[String: Any]] = [["text": currentPrompt]]
+            if let jpegData = currentImage {
+                currentParts.append([
+                    "inline_data": [
+                        "mime_type": "image/jpeg",
+                        "data": jpegData.base64EncodedString()
+                    ]
+                ])
+            }
+            contentsArray.append([
+                "role": "user",
+                "parts": currentParts
+            ])
+        }
+        
+        let payload: [String: Any] = [
+            "contents": contentsArray
+        ]
+        
+        return await executeGeminiRequest(payload: payload, apiKey: apiKey)
+    }
+    
+    // MARK: - Private Unified Request Execution
+    
+    private func executeGeminiRequest(
+        payload: [String: Any],
         apiKey: String
     ) async -> MultimodalResult {
         let startTime = CFAbsoluteTimeGetCurrent()
@@ -212,24 +361,6 @@ final class MultimodalService: Sendable {
                 status: .error("Invalid URL")
             )
         }
-        
-        let base64Image = jpegData.base64EncodedString()
-        
-        let payload: [String: Any] = [
-            "contents": [
-                [
-                    "parts": [
-                        ["text": prompt],
-                        [
-                            "inline_data": [
-                                "mime_type": "image/jpeg",
-                                "data": base64Image
-                            ]
-                        ]
-                    ]
-                ]
-            ]
-        ]
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"

@@ -65,7 +65,8 @@ TestApp/
 ### Multimodal/
 | File | Role | Size |
 |------|------|------|
-| `MultimodalService.swift` | Gemini 2.5 Flash REST client via native `URLSession`. Contains prompt builders: `buildDefaultAnalysisPrompt()` and `buildVoiceQuestionPrompt()`. Language directive injection. | ~17 KB |
+| `MultimodalService.swift` | Gemini 2.5 Flash REST client via native `URLSession`. Multi-turn visual reasoning (`analyzeMultiTurn`), prompt builders (`buildDefaultAnalysisPrompt`, `buildVoiceQuestionPrompt`, `buildFollowUpVoicePrompt`). Language directive injection. | ~18 KB |
+| `ConversationMemory.swift` | Conversational memory data models (`SceneConversationThread`, `ConversationTurn`) and empirical scene stability parameters (`SceneStabilityConfiguration`). | ~3 KB |
 | `MultimodalConfig.swift` | API key resolution chain: `Secrets.swift` → `UserDefaults` → `Info.plist`. | ~2 KB |
 | `Secrets.swift` | Gitignored local API key constant. | <1 KB |
 

@@ -2,11 +2,29 @@ import Foundation
 import Vision
 
 /// Holds snapshot properties of the last successfully analyzed visual scene.
-struct AnalyzedSceneReference {
+struct AnalyzedSceneReference: Equatable, Sendable {
     let dominantClassification: String?
     let ocrTextFingerprint: String
     let featurePrint: VNFeaturePrintObservation?
     let analyzedAt: Date
+    
+    init(
+        dominantClassification: String?,
+        ocrTextFingerprint: String,
+        featurePrint: VNFeaturePrintObservation?,
+        analyzedAt: Date = Date()
+    ) {
+        self.dominantClassification = dominantClassification
+        self.ocrTextFingerprint = ocrTextFingerprint
+        self.featurePrint = featurePrint
+        self.analyzedAt = analyzedAt
+    }
+    
+    static func == (lhs: AnalyzedSceneReference, rhs: AnalyzedSceneReference) -> Bool {
+        lhs.dominantClassification == rhs.dominantClassification &&
+        lhs.ocrTextFingerprint == rhs.ocrTextFingerprint &&
+        lhs.analyzedAt == rhs.analyzedAt
+    }
 }
 
 /// Synthesizes raw visual signals from on-device Vision, OCR, and cloud Multimodal AI into cohesive, accessible interpretations.
@@ -139,7 +157,7 @@ final class InterpretationService: @unchecked Sendable {
             var distance: Float = 0.0
             do {
                 try curFP.computeDistance(&distance, to: refFP)
-                if distance > 0.40 {
+                if distance > SceneStabilityConfiguration.featurePrintDistanceThreshold {
                     divergence += 0.5
                     reasons.append("Visual feature distance: \(String(format: "%.2f", distance))")
                 }

@@ -49,9 +49,8 @@ struct CameraView: View {
     @State private var speechService = SpeechService()
     private let interpretationService = InterpretationService()
     
-    // Continuous Scene Divergence Tracking
-    private let divergenceThreshold: Float = 0.50
-    private let sceneChangeConfirmationSeconds: TimeInterval = 0.35
+    // Scene Anchoring & Conversational Memory (T009)
+    @State private var activeConversationThread: SceneConversationThread? = nil
     
     // State Tracking
     @State private var lastAnalyzedScene: AnalyzedSceneReference?
@@ -326,20 +325,40 @@ struct CameraView: View {
         
         lastVisualObservationTime = now
         
-        // 2. Track scene divergence against the last analyzed scene (for diagnostics & contextual awareness)
-        // NOTE: Scene divergence does NOT erase the persistent AI answer (T007.3).
-        if let reference = lastAnalyzedScene {
-            let (divergence, reason) = interpretationService.computeSceneDivergence(current: recognition, reference: reference)
-            lastDivergenceScore = divergence
-            if divergence >= divergenceThreshold {
-                if sceneDivergenceStartTime == nil {
-                    sceneDivergenceStartTime = now
-                    print("[SCENE] Scene change observed (\(reason ?? "divergence")). Persistent AI answer remains visible.")
-                }
+        // 2. Track scene divergence against the active conversation thread (or last analyzed scene)
+        // NOTE: Scene divergence resets active multi-turn conversational context, but does NOT erase persistent AI answer display (T007.3).
+        if let activeThread = activeConversationThread {
+            if activeThread.isExpired() {
+                print("[MEMORY] Active conversation thread expired due to inactivity (> \(Int(SceneStabilityConfiguration.threadInactivityTimeout))s). Resetting thread.")
+                self.activeConversationThread = nil
+                self.sceneDivergenceStartTime = nil
             } else {
-                if sceneDivergenceStartTime != nil {
-                    sceneDivergenceStartTime = nil
+                let (divergence, reason) = interpretationService.computeSceneDivergence(current: recognition, reference: activeThread.anchorScene)
+                lastDivergenceScore = divergence
+                
+                if divergence >= SceneStabilityConfiguration.divergenceThreshold {
+                    if let start = sceneDivergenceStartTime {
+                        let elapsed = now.timeIntervalSince(start)
+                        if elapsed >= SceneStabilityConfiguration.confirmationDuration {
+                            print("[SCENE] Confirmed scene change (\(reason ?? "diverged")). Resetting active conversation thread. (Persistent AI answer remains visible)")
+                            self.activeConversationThread = nil
+                            self.sceneDivergenceStartTime = nil
+                        }
+                    } else {
+                        self.sceneDivergenceStartTime = now
+                        print("[SCENE] Candidate scene divergence observed (\(reason ?? "diverged")). Awaiting confirmation (\(SceneStabilityConfiguration.confirmationDuration)s)...")
+                    }
+                } else {
+                    if sceneDivergenceStartTime != nil {
+                        self.sceneDivergenceStartTime = nil
+                    }
                 }
+            }
+        } else if let reference = lastAnalyzedScene {
+            let (divergence, _) = interpretationService.computeSceneDivergence(current: recognition, reference: reference)
+            lastDivergenceScore = divergence
+            if divergence < SceneStabilityConfiguration.divergenceThreshold {
+                sceneDivergenceStartTime = nil
             }
         }
         
@@ -390,15 +409,17 @@ struct CameraView: View {
         if let topClass = cameraManager.latestResult.topClassification {
             onDeviceHints.append("Visual category: \(topClass.identifier)")
         }
-        let prompt = MultimodalService.buildDefaultAnalysisPrompt(
-            onDeviceHints: onDeviceHints,
-            locale: speechService.selectedLocale
-        )
+        
+        let activeTurns = self.activeConversationThread?.turns ?? []
+        let manualQuestion = speechService.isIndonesian ? "Apa ini?" : "What is this?"
         
         Task {
-            let result = await multimodalService.analyzeImage(
-                jpegData: jpegData,
-                prompt: prompt,
+            let result = await multimodalService.analyzeMultiTurn(
+                turns: activeTurns,
+                currentQuestion: manualQuestion,
+                currentImage: jpegData,
+                onDeviceHints: onDeviceHints,
+                locale: speechService.selectedLocale,
                 apiKey: MultimodalConfig.apiKey
             )
             
@@ -419,6 +440,21 @@ struct CameraView: View {
                         multimodal: result,
                         locale: self.speechService.selectedLocale
                     )
+                    
+                    let newTurn = ConversationTurn(
+                        question: manualQuestion,
+                        answer: synthesized,
+                        rawAIResponse: result.text
+                    )
+                    
+                    if var thread = self.activeConversationThread, !thread.isExpired() {
+                        thread.appendTurn(newTurn)
+                        self.activeConversationThread = thread
+                    } else {
+                        var newThread = SceneConversationThread(anchorScene: snapshotReference)
+                        newThread.appendTurn(newTurn)
+                        self.activeConversationThread = newThread
+                    }
                     
                     withAnimation(.easeInOut(duration: 0.25)) {
                         self.currentAIAnswer = synthesized
@@ -560,7 +596,15 @@ struct CameraView: View {
         AccessibilityVoiceService.shared.speak(analyzingQuestionMsg, languageCode: speechService.selectedLocale.identifier)
         
         let requestStartTime = Date()
-        let previousContext = self.currentAIAnswer.map { "\($0.primaryHeadline): \($0.detailedDescription ?? "")" }
+        
+        let activeTurns: [ConversationTurn]
+        if let currentThread = self.activeConversationThread, !currentThread.isExpired() {
+            activeTurns = currentThread.turns
+            print("[\(triggerType.uppercased())] Continuing active scene conversation thread (\(activeTurns.count) prior turns)...")
+        } else {
+            activeTurns = []
+            print("[\(triggerType.uppercased())] Starting new scene conversation thread...")
+        }
         
         var onDeviceHints: [String] = []
         if !cameraManager.latestResult.recognizedTexts.isEmpty {
@@ -571,19 +615,15 @@ struct CameraView: View {
             onDeviceHints.append("Visual category: \(topClass.identifier)")
         }
         
-        let prompt = MultimodalService.buildVoiceQuestionPrompt(
-            userQuestion: question,
-            previousContext: previousContext,
-            onDeviceHints: onDeviceHints,
-            locale: speechService.selectedLocale
-        )
-        
-        print("[\(triggerType.uppercased())] Sending Gemini query for: \"\(question)\" (\(jpegData.count) bytes) in locale \(speechService.selectedLocale.identifier)...")
+        print("[\(triggerType.uppercased())] Sending Gemini multi-turn query for: \"\(question)\" (\(jpegData.count) bytes, \(activeTurns.count) prior turns) in locale \(speechService.selectedLocale.identifier)...")
         
         Task {
-            let result = await multimodalService.analyzeImage(
-                jpegData: jpegData,
-                prompt: prompt,
+            let result = await multimodalService.analyzeMultiTurn(
+                turns: activeTurns,
+                currentQuestion: question,
+                currentImage: jpegData,
+                onDeviceHints: onDeviceHints,
+                locale: speechService.selectedLocale,
                 apiKey: MultimodalConfig.apiKey
             )
             
@@ -608,6 +648,21 @@ struct CameraView: View {
                         multimodal: result,
                         locale: self.speechService.selectedLocale
                     )
+                    
+                    let newTurn = ConversationTurn(
+                        question: question,
+                        answer: synthesized,
+                        rawAIResponse: result.text
+                    )
+                    
+                    if var thread = self.activeConversationThread, !thread.isExpired() {
+                        thread.appendTurn(newTurn)
+                        self.activeConversationThread = thread
+                    } else {
+                        var newThread = SceneConversationThread(anchorScene: sceneRef)
+                        newThread.appendTurn(newTurn)
+                        self.activeConversationThread = newThread
+                    }
                     
                     withAnimation(.easeInOut(duration: 0.25)) {
                         self.currentAIAnswer = synthesized
@@ -1255,15 +1310,24 @@ struct CameraView: View {
             }
             
             HStack {
+                Text("Active Thread:")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(activeConversationThread != nil ? "Active (\(activeConversationThread!.turnCount) turns)" : "None (New Scene)")
+                    .font(.caption2)
+                    .foregroundStyle(activeConversationThread != nil ? .green : .white)
+                
+                Spacer()
+                
                 Text("Divergence:")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Text(String(format: "%.2f", lastDivergenceScore))
                     .font(.caption2)
-                    .foregroundStyle(.white)
-                
-                Spacer()
-                
+                    .foregroundStyle(lastDivergenceScore >= SceneStabilityConfiguration.divergenceThreshold ? .orange : .white)
+            }
+            
+            HStack {
                 Text("Sources:")
                     .font(.caption2)
                     .foregroundStyle(.secondary)

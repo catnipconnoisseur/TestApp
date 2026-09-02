@@ -202,6 +202,24 @@ If the denomination cannot be determined with confidence:
 
 ---
 
+---
+
+## Scene-Anchored Multi-Turn Conversational Memory (T009)
+
+TestApp maintains contextual memory across follow-up questions while the camera is focused on the same physical scene.
+
+### Conversation Lifecycle
+1. **Thread Start (Turn 1):** User asks a question ("What is this?"). A `SceneConversationThread` is initialized, anchored to the current `AnalyzedSceneReference`. Gemini receives Turn 1 prompt + image snapshot.
+2. **Follow-Up Turns (Turn 2..N):** While the camera remains on the same scene (FeaturePrint divergence $< 0.50$), follow-up questions ("What is it used for?", "What color is it?", "Read the text") are appended to the active thread. Gemini receives alternating `user` and `model` turns from history plus the new prompt + active frame.
+3. **Pronoun / Anaphora Resolution:** The AI resolves references such as "it", "this", "that", "its purpose", or "the ingredients" using prior conversation context, answering directly without re-explaining the object identity from scratch.
+4. **Scene Reset:** When sustained visual divergence ($\ge 0.50$ for $\ge 0.40$s) is confirmed, the active conversation thread is destroyed (`activeConversationThread = nil`). The next question becomes Turn 1 of a brand new scene thread.
+5. **Inactivity Expiration:** If no questions are asked for 5 minutes (`SceneStabilityConfiguration.threadInactivityTimeout = 300.0`), the thread expires automatically.
+
+### Multi-Turn Language Consistency
+The active app locale (`Locale`) is strictly enforced on *every* turn. Even if the user asks a follow-up in English while the app is set to Indonesian, the AI always generates its response in Bahasa Indonesia (and vice versa).
+
+---
+
 ## Important: What AI Agents Must NOT Change
 
 1. **Do not remove the LANGUAGE DIRECTIVE** from prompts — the AI will revert to English.
@@ -209,3 +227,5 @@ If the denomination cannot be determined with confidence:
 3. **Do not allow Markdown in Gemini responses** — it creates VoiceOver noise.
 4. **Do not bypass `InterpretationService` currency validation** — Gemini sometimes hallucinates denominations.
 5. **Do not make the AI narrate unsolicited** — the user is in control.
+6. **Do not send continuous camera frames to Gemini** — scene tracking is purely local on-device via Apple Vision FeaturePrints.
+

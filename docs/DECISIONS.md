@@ -174,3 +174,22 @@ DESCRIPTION: [1-3 sentence explanation]
 1. *Placing Quick Access on the final Ready screen:* Rejected because users had to navigate past the interactive voice tutorial before even seeing shortcut options.
 2. *Mandatory Action Button Configuration:* Rejected. Third-party apps cannot force or programmatically assign hardware buttons; forcing external navigation creates onboarding friction.
 3. *Simulated Assignment Detection:* Rejected. iOS provides no public API to verify hardware Action Button assignment. The app accurately tracks user-guided completion via `@AppStorage("hasCompletedQuickAccessSetup")`.
+
+---
+
+## D017 — Scene-Anchored Conversational Memory (T009)
+
+**Decision:** Maintain short-lived multi-turn conversational context anchored to the physical scene via on-device Vision `VNFeaturePrintObservation`, resetting active conversational threads only upon temporal confirmation of sustained visual divergence ($\ge 0.50$ for $\ge 0.40$s).
+
+**Why:**
+- Enables natural follow-up questions (*"What is it used for?"*, *"What color is it?"*, *"Read the ingredients"*) without forcing the user to repeat the full name of the object.
+- **Local Scene Tracking:** FeaturePrint evaluation and divergence tracking happen completely on-device in `InterpretationService` / `CameraView` at 0 network cost. Gemini is only contacted when the user explicitly asks a question.
+- **Temporal Debouncing & Stability:** Sustained divergence duration ($\ge 0.40$s) prevents temporary hand shakes, brief occlusions, micro-angle shifts, or lighting fluctuations from prematurely destroying an active conversational thread.
+- **Persistent Answer Independence:** Resetting an active thread on confirmed scene change clears the context sent to Gemini on the next turn, but does *not* erase the visually displayed AI answer card (preserving T007.3 persistent answer requirements).
+- **Lightweight Payload Strategy:** Turn 1 sends the initial image and prompt. Follow-up turns send the conversation history (alternating `user` and `model` turns) plus the current image frame, allowing Gemini to focus on the follow-up question while remaining grounded in the original interaction.
+- **Empirical Tuning Constants:** All scene stability parameters are consolidated in `SceneStabilityConfiguration` as empirical tuning constants rather than hardcoded magic numbers.
+
+**Rejected Alternatives:**
+1. *Continuous Video Streaming to Gemini:* Cloud video streaming consumes excessive bandwidth, battery, and introduces unacceptable latency and token costs.
+2. *Permanent / Persistent Disk Conversation History:* Unnecessary for real-time visual assistance and risks context contamination between disparate physical tasks.
+3. *Single-Frame Instant Scene Reset:* Rejected because normal hand jitter and perspective rotation produce single-frame feature variance, which would erroneously wipe user context mid-conversation.

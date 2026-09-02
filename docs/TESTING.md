@@ -155,18 +155,46 @@ No XCTest infrastructure exists. All verification has been manual (build + on-de
 
 ---
 
+## T009 — Scene-Anchored Conversational Memory Test Matrix
+
+| Test | Scenario | Action | Expected Result | Status |
+|------|----------|--------|-----------------|--------|
+| **Test A** | Same Scene Multi-Turn | Turn 1: *"What is this?"* → Turn 2: *"What is it used for?"* → Turn 3: *"What color is it?"* | Gemini resolves "it" based on Turn 1; answers are concise plain text. | ✅ Verified |
+| **Test B** | Same Object, Camera Movement | Ask question → move phone closer, rotate angle slightly → ask follow-up | Active thread continues; single-frame perspective shifts do not trigger reset. | ✅ Verified |
+| **Test C** | Temporary Occlusion | Ask question → briefly cover lens with hand (< 0.4s) → return to object → ask follow-up | Debounce prevents premature reset; conversation thread stays active. | ✅ Verified |
+| **Test D** | Completely New Object | Ask question on Object A → point to completely different Object B for > 0.4s → ask question | Scene divergence confirmed; old thread reset; Object B starts as Turn 1. | ✅ Verified |
+| **Test E** | Rapid Camera Movement | Move phone quickly from Object A to Object B | No unstable rapid thread toggling or race conditions. | ✅ Verified |
+| **Test F** | Ambiguous Transition | Move partially away from object and back within 0.3s | Conversation remains intact without flapping. | ✅ Verified |
+| **Test G** | Multi-Turn Payload | Inspect request payload logging | Alternating `user`/`model` turns constructed correctly; stale turns excluded after scene change. | ✅ Verified |
+| **Test H** | Bilingual Consistency | Multi-turn dialog in Indonesian mode (with English or Indonesian questions) | All Gemini responses stay strictly in Bahasa Indonesia across turns. | ✅ Verified |
+| **Test I** | Regression Suite | Verify camera feed, OCR, Speech, Action Button, Persistent Answer | Zero regressions across baseline features. | ✅ Verified |
+
+---
+
+## Scene Stability Empirical Threshold Validation
+
+| Parameter | Configuration Constant | Initial Hypothesis | Validation Observation | Final Empirical Value |
+|-----------|------------------------|--------------------|------------------------|-----------------------|
+| Divergence Threshold | `SceneStabilityConfiguration.divergenceThreshold` | `0.50` | Reliably separates natural hand jitter from distinct objects. | `0.50` |
+| Confirmation Duration | `SceneStabilityConfiguration.confirmationDuration` | `0.35s` | `0.40s` provides smoother debounce during fast pans while remaining snappy. | `0.40s` |
+| Thread Inactivity Timeout | `SceneStabilityConfiguration.threadInactivityTimeout` | N/A | 5-minute timeout prevents stale threads after long pauses. | `300.0s` |
+| FeaturePrint Distance | `SceneStabilityConfiguration.featurePrintDistanceThreshold` | `0.40` | `0.45` accommodates moderate ambient shadow shifts without false trigger. | `0.45` |
+
+---
+
 ## Debugging Tips
 
 ### Enable Developer Diagnostics
 Settings → Developer → "Show Diagnostics on Camera" → ON
 
 This overlay shows:
+- Active Thread status & turn count
 - Last Gemini latency (ms)
 - Perceived turnaround (ms)
 - Payload size (bytes)
 - Multimodal status (200 OK / 429 / error)
 - Scene divergence score
-- Trigger type (Voice / Test-Text / Auto)
+- Trigger type (Voice / Test-Text / Auto / Manual)
 
 ### Console Logging
 Filter Xcode console by service tag:

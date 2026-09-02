@@ -94,12 +94,19 @@
 
 ---
 
-## Planned / Not Yet Started
+### T009 — Scene-Anchored Conversational Memory `Complete`
+- `SceneConversationThread` & `ConversationTurn` data models in `ConversationMemory.swift`
+- Local scene tracking via `VNFeaturePrintObservation` cosine distance
+- Temporal confirmation debounce ($\ge 0.50$ divergence for $\ge 0.40$s) before resetting conversation context
+- Multi-turn Gemini request construction with alternating `user` / `model` history
+- Empirical configuration consolidation in `SceneStabilityConfiguration`
+- Inactivity expiration (5 minutes) and bilingual language preservation across multi-turn dialogs
+- Developer telemetry overlay showing active thread status, turn counts, and divergence scores
+- Commit: `feat(memory): implement scene-anchored conversational memory (T009)`
 
-### T009 — Conversational Memory & Spatial Context `Planned`
-- Scene-anchored conversational memory (multi-turn context beyond single previous answer)
-- Repeat answer gesture via Actions Rotor
-- Tactile progress feedback during thinking state
+---
+
+## Planned / Not Yet Started
 
 ### T010 — Create ML Feasibility & Evaluation `Planned`
 - Evaluate whether a custom trained model improves recognition beyond Gemini + Vision
@@ -109,7 +116,7 @@
 
 ## Current Active Ticket
 
-**None actively in progress.** T008 was the last completed ticket. Documentation system is being established.
+**T009 complete.** Ready for on-device field usability validation.
 
 ---
 
