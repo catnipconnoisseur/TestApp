@@ -164,10 +164,10 @@ struct WelcomeView: View {
             ZStack {
                 Circle()
                     .fill(Color.blue.opacity(0.12))
-                    .frame(width: 68, height: 68)
+                    .frame(width: 64, height: 64)
                 
                 Image(systemName: "eye.circle.fill")
-                    .font(.system(size: 42, weight: .regular))
+                    .font(.system(size: 40, weight: .regular))
                     .foregroundStyle(.blue)
             }
             .accessibilityHidden(true)
@@ -189,38 +189,70 @@ struct WelcomeView: View {
                 .padding(.horizontal, 8)
                 .fixedSize(horizontal: false, vertical: true)
             
-            // 3. Language Selection Section
-            VStack(alignment: .leading, spacing: 10) {
-                Text(speechService.isIndonesian ? "Pilih bahasa" : "Choose your language")
-                    .font(.footnote)
-                    .fontWeight(.bold)
-                    .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
-                    .padding(.horizontal, 4)
-                    .accessibilityAddTraits(.isHeader)
-                
-                // 4. English & 5. Bahasa Indonesia Options
-                VStack(spacing: 8) {
-                    languageOptionCard(
-                        title: "English",
-                        localeIdentifier: "en-US",
-                        isSelected: !speechService.isIndonesian
-                    )
-                    
-                    languageOptionCard(
-                        title: "Bahasa Indonesia",
-                        localeIdentifier: "id-ID",
-                        isSelected: speechService.isIndonesian
-                    )
-                }
-            }
-            .padding(.top, 8)
-            .padding(.horizontal, 4)
+            // 3. Language Spatial Guidance Instruction
+            Text(speechService.isIndonesian
+                 ? "Pilih bahasa Anda di atas, lalu pilih Lanjut di bagian bawah layar."
+                 : "Choose your language above, then select Continue at the bottom of the screen.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 12)
+                .fixedSize(horizontal: false, vertical: true)
+            
+            // 4. Coherent Accessible Language Selector
+            languageSelectorControl
+                .padding(.top, 4)
+                .padding(.horizontal, 4)
         }
         .padding(.horizontal, 24)
     }
     
-    private func languageOptionCard(title: String, localeIdentifier: String, isSelected: Bool) -> some View {
+    // MARK: - Language Selector (Accessible Adjustable Control)
+    
+    private var languageSelectorControl: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(speechService.isIndonesian ? "Pilih bahasa" : "Choose your language")
+                .font(.caption)
+                .fontWeight(.bold)
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .padding(.horizontal, 4)
+                .accessibilityHidden(true)
+            
+            VStack(spacing: 8) {
+                languageVisualOption(
+                    title: "English",
+                    localeIdentifier: "en-US",
+                    isSelected: !speechService.isIndonesian
+                )
+                
+                languageVisualOption(
+                    title: "Bahasa Indonesia",
+                    localeIdentifier: "id-ID",
+                    isSelected: speechService.isIndonesian
+                )
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(speechService.isIndonesian ? "Bahasa" : "Language")
+        .accessibilityValue(speechService.isIndonesian ? "Bahasa Indonesia dipilih" : "English selected")
+        .accessibilityHint(speechService.isIndonesian
+            ? "Gesek ke atas atau ke bawah untuk mengubah bahasa."
+            : "Swipe up or down to change language.")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment, .decrement:
+                cycleLanguage()
+            @unknown default:
+                break
+            }
+        }
+        .accessibilityAction(.default) {
+            cycleLanguage()
+        }
+    }
+    
+    private func languageVisualOption(title: String, localeIdentifier: String, isSelected: Bool) -> some View {
         Button {
             selectLanguage(identifier: localeIdentifier)
         } label: {
@@ -262,11 +294,14 @@ struct WelcomeView: View {
             )
         }
         .buttonStyle(.plain)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(title)
-        .accessibilityValue(isSelected ? (speechService.isIndonesian ? "Dipilih" : "Selected") : (speechService.isIndonesian ? "Tidak dipilih" : "Not selected"))
-        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : [.isButton])
-        .accessibilityHint(speechService.isIndonesian ? "Ketuk dua kali untuk memilih bahasa ini." : "Double-tap to select this language.")
+    }
+    
+    private func cycleLanguage() {
+        if speechService.isIndonesian {
+            selectLanguage(identifier: "en-US")
+        } else {
+            selectLanguage(identifier: "id-ID")
+        }
     }
     
     private func selectLanguage(identifier: String) {
@@ -281,8 +316,8 @@ struct WelcomeView: View {
         }
         
         let confirmMsg = speechService.isIndonesian
-            ? "Bahasa Indonesia dipilih. Ketuk Lanjut di bagian bawah layar untuk melanjutkan."
-            : "English selected. Tap Continue at the bottom of the screen to proceed."
+            ? "Bahasa Indonesia dipilih."
+            : "English selected."
         AccessibilityVoiceService.shared.speak(confirmMsg, languageCode: speechService.selectedLocale.identifier)
     }
     
@@ -290,8 +325,8 @@ struct WelcomeView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
             guard currentStep == .welcome else { return }
             let welcomeMsg = speechService.isIndonesian
-                ? "Selamat datang di TestApp, asisten visual Anda. TestApp mendeskripsikan lingkungan sekitar Anda menggunakan kamera dan suara. Pilih bahasa yang Anda inginkan, lalu ketuk Lanjut di bagian bawah layar untuk mengatur aplikasi."
-                : "Welcome to TestApp, your visual assistant. TestApp describes what is around you using your camera and voice. Choose your preferred language, then tap Continue at the bottom of the screen to set up the app."
+                ? "Selamat datang di TestApp, asisten visual Anda. Pilih bahasa Anda di atas, lalu pilih Lanjut di bagian bawah layar."
+                : "Welcome to TestApp, your visual assistant. Choose your language above, then select Continue at the bottom of the screen."
             AccessibilityVoiceService.shared.speak(welcomeMsg, languageCode: speechService.selectedLocale.identifier)
         }
     }
@@ -693,8 +728,8 @@ struct WelcomeView: View {
             .controlSize(.large)
             .accessibilityLabel(speechService.isIndonesian ? "Lanjut" : "Continue")
             .accessibilityHint(speechService.isIndonesian
-                ? "Membuka halaman pengaturan izin dan akses cepat."
-                : "Opens the permissions and quick access setup page.")
+                ? "Di bagian bawah layar. Membuka halaman pengaturan izin dan akses cepat."
+                : "At the bottom of the screen. Opens the permissions and quick access setup page.")
             
         case .permissionsSetup:
             // Screen 2: Continue to Try Asking
