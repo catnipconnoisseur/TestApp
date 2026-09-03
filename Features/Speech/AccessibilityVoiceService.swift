@@ -22,9 +22,16 @@ final class AccessibilityVoiceService: NSObject, AVSpeechSynthesizerDelegate {
     
     // MARK: - Core Speech & Announcement Delivery
     
-    /// Returns the currently active language code from UserDefaults, falling back to en-US.
+    /// Returns the currently active language code from UserDefaults, falling back to device locale or en-US.
     var activeLanguageCode: String {
-        UserDefaults.standard.string(forKey: "selectedLanguageCode") ?? "en-US"
+        if let saved = UserDefaults.standard.string(forKey: "selectedLanguageCode") {
+            return saved
+        }
+        let currentLang = Locale.current.language.languageCode?.identifier ?? ""
+        if currentLang.hasPrefix("id") {
+            return "id-ID"
+        }
+        return "en-US"
     }
     
     /// Speaks or announces the given text based on current accessibility state and selected language.

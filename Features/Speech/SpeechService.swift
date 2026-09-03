@@ -28,8 +28,14 @@ final class SpeechService {
     var partialTranscript: String = ""
     var finalTranscript: String = ""
     var selectedLocale: Locale = {
-        let savedIdentifier = UserDefaults.standard.string(forKey: "selectedLanguageCode") ?? "en-US"
-        return Locale(identifier: savedIdentifier)
+        if let savedIdentifier = UserDefaults.standard.string(forKey: "selectedLanguageCode") {
+            return Locale(identifier: savedIdentifier)
+        }
+        let currentLang = Locale.current.language.languageCode?.identifier ?? ""
+        if currentLang.hasPrefix("id") {
+            return Locale(identifier: "id-ID")
+        }
+        return Locale(identifier: "en-US")
     }() {
         didSet {
             UserDefaults.standard.set(selectedLocale.identifier, forKey: "selectedLanguageCode")

@@ -90,12 +90,7 @@ struct WelcomeView: View {
         }
         .onAppear {
             updatePermissionStatuses()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                let welcomeMsg = speechService.isIndonesian
-                    ? "Selamat datang di TestApp, asisten visual Anda. TestApp menggunakan kamera dan mikrofon untuk mendeskripsikan apa yang ada di sekitar Anda. Ketuk tombol Lanjutkan di bagian bawah layar untuk mengatur aplikasi."
-                    : "Welcome to TestApp, your visual assistant. TestApp uses your camera and microphone to describe what is around you. Tap Continue at the bottom of the screen to set up the app."
-                AccessibilityVoiceService.shared.speak(welcomeMsg, languageCode: speechService.selectedLocale.identifier)
-            }
+            announceWelcome()
         }
         .onDisappear {
             speechService.cancelRecording()
@@ -161,77 +156,143 @@ struct WelcomeView: View {
         .animation(.easeInOut(duration: 0.25), value: currentStep)
     }
     
-    // MARK: - Screen 1: Welcome Content
+    // MARK: - Screen 1: Welcome Content (with Integrated Language Selection)
     
     private var welcomeContent: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 16) {
+            // App Branding Icon
             ZStack {
                 Circle()
                     .fill(Color.blue.opacity(0.12))
-                    .frame(width: 80, height: 80)
+                    .frame(width: 68, height: 68)
                 
                 Image(systemName: "eye.circle.fill")
-                    .font(.system(size: 48, weight: .regular))
+                    .font(.system(size: 42, weight: .regular))
                     .foregroundStyle(.blue)
             }
             .accessibilityHidden(true)
             
-            VStack(spacing: 8) {
-                Text(speechService.isIndonesian ? "Asisten visual Anda" : "Meet your visual assistant")
-                    .font(.title)
+            // 1. App Title
+            Text("TestApp")
+                .font(.largeTitle)
+                .fontWeight(.bold)
+                .multilineTextAlignment(.center)
+                .accessibilityAddTraits(.isHeader)
+            
+            // 2. Welcome / Value Statement
+            Text(speechService.isIndonesian
+                 ? "Asisten visual cerdas yang mendeskripsikan lingkungan sekitar Anda menggunakan kamera dan suara."
+                 : "An intelligent visual assistant that describes what is around you using your camera and voice.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 8)
+                .fixedSize(horizontal: false, vertical: true)
+            
+            // 3. Language Selection Section
+            VStack(alignment: .leading, spacing: 10) {
+                Text(speechService.isIndonesian ? "Pilih bahasa" : "Choose your language")
+                    .font(.footnote)
                     .fontWeight(.bold)
-                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                    .padding(.horizontal, 4)
                     .accessibilityAddTraits(.isHeader)
                 
-                Text(speechService.isIndonesian
-                     ? "Arahkan kamera ke objek di sekitar Anda dan ajukan pertanyaan untuk mendengar jawaban suara yang jelas."
-                     : "Point your camera at anything around you and ask questions to get clear spoken answers.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 8)
+                // 4. English & 5. Bahasa Indonesia Options
+                VStack(spacing: 8) {
+                    languageOptionCard(
+                        title: "English",
+                        localeIdentifier: "en-US",
+                        isSelected: !speechService.isIndonesian
+                    )
+                    
+                    languageOptionCard(
+                        title: "Bahasa Indonesia",
+                        localeIdentifier: "id-ID",
+                        isSelected: speechService.isIndonesian
+                    )
+                }
             }
-            
-            // Feature Highlights
-            VStack(alignment: .leading, spacing: 12) {
-                featureRow(
-                    icon: "camera.fill",
-                    title: speechService.isIndonesian ? "Pemahaman Visual" : "Visual Understanding",
-                    description: speechService.isIndonesian ? "Menjelaskan objek, teks, dan detail di lingkungan sekitar Anda." : "Describes objects, text, and details in your surroundings."
-                )
-                featureRow(
-                    icon: "waveform",
-                    title: speechService.isIndonesian ? "Suara Alami" : "Natural Voice",
-                    description: speechService.isIndonesian ? "Tahan bagian bawah layar untuk bertanya dengan kata-kata Anda sendiri." : "Hold the bottom of the screen to ask questions in your own words."
-                )
-            }
-            .padding(.top, 4)
+            .padding(.top, 8)
             .padding(.horizontal, 4)
         }
         .padding(.horizontal, 24)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(speechService.isIndonesian
-            ? "Selamat datang di TestApp, asisten visual Anda. TestApp menggunakan kamera dan mikrofon untuk mendeskripsikan lingkungan Anda. Arahkan kamera ke objek dan tanyakan apa pun. Ketuk tombol Lanjutkan di bagian bawah layar untuk memulai pengaturan."
-            : "Welcome to TestApp, your visual assistant. TestApp uses your camera and microphone to describe what is around you. Point your camera at anything around you and ask questions to get clear spoken answers. Tap the Continue button at the bottom of the screen to begin setup.")
     }
     
-    private func featureRow(icon: String, title: String, description: String) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: icon)
-                .font(.title3)
-                .foregroundStyle(.blue)
-                .frame(width: 28, alignment: .center)
-                .padding(.top, 2)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.headline)
-                    .fontWeight(.semibold)
+    private func languageOptionCard(title: String, localeIdentifier: String, isSelected: Bool) -> some View {
+        Button {
+            selectLanguage(identifier: localeIdentifier)
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(isSelected ? Color.blue : Color(.tertiaryLabel))
                 
-                Text(description)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                Text(title)
+                    .font(.body)
+                    .fontWeight(isSelected ? .semibold : .regular)
+                    .foregroundStyle(.primary)
+                
+                Spacer()
+                
+                if isSelected {
+                    Text(speechService.isIndonesian ? "Dipilih" : "Selected")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.blue)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(
+                            Capsule()
+                                .fill(Color.blue.opacity(0.12))
+                        )
+                }
             }
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(isSelected ? Color.blue.opacity(0.08) : Color(.secondarySystemBackground))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(isSelected ? Color.blue : Color(.separator).opacity(0.3), lineWidth: isSelected ? 1.5 : 1)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue(isSelected ? (speechService.isIndonesian ? "Dipilih" : "Selected") : (speechService.isIndonesian ? "Tidak dipilih" : "Not selected"))
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : [.isButton])
+        .accessibilityHint(speechService.isIndonesian ? "Ketuk dua kali untuk memilih bahasa ini." : "Double-tap to select this language.")
+    }
+    
+    private func selectLanguage(identifier: String) {
+        let isSame = (speechService.selectedLocale.identifier == identifier)
+        if !isSame {
+            let haptic = UIImpactFeedbackGenerator(style: .light)
+            haptic.impactOccurred()
+            
+            withAnimation(.easeInOut(duration: 0.2)) {
+                speechService.selectedLocale = Locale(identifier: identifier)
+            }
+        }
+        
+        let confirmMsg = speechService.isIndonesian
+            ? "Bahasa Indonesia dipilih. Ketuk Lanjut di bagian bawah layar untuk melanjutkan."
+            : "English selected. Tap Continue at the bottom of the screen to proceed."
+        AccessibilityVoiceService.shared.speak(confirmMsg, languageCode: speechService.selectedLocale.identifier)
+    }
+    
+    private func announceWelcome() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            guard currentStep == .welcome else { return }
+            let welcomeMsg = speechService.isIndonesian
+                ? "Selamat datang di TestApp, asisten visual Anda. TestApp mendeskripsikan lingkungan sekitar Anda menggunakan kamera dan suara. Pilih bahasa yang Anda inginkan, lalu ketuk Lanjut di bagian bawah layar untuk mengatur aplikasi."
+                : "Welcome to TestApp, your visual assistant. TestApp describes what is around you using your camera and voice. Choose your preferred language, then tap Continue at the bottom of the screen to set up the app."
+            AccessibilityVoiceService.shared.speak(welcomeMsg, languageCode: speechService.selectedLocale.identifier)
         }
     }
     
@@ -622,7 +683,7 @@ struct WelcomeView: View {
             Button {
                 advanceStep()
             } label: {
-                Text(speechService.isIndonesian ? "Lanjutkan" : "Continue")
+                Text(speechService.isIndonesian ? "Lanjut" : "Continue")
                     .font(.title3)
                     .fontWeight(.bold)
                     .frame(maxWidth: .infinity)
@@ -630,7 +691,7 @@ struct WelcomeView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .accessibilityLabel(speechService.isIndonesian ? "Lanjutkan" : "Continue")
+            .accessibilityLabel(speechService.isIndonesian ? "Lanjut" : "Continue")
             .accessibilityHint(speechService.isIndonesian
                 ? "Membuka halaman pengaturan izin dan akses cepat."
                 : "Opens the permissions and quick access setup page.")
@@ -997,7 +1058,7 @@ struct WelcomeView: View {
             updatePermissionStatuses()
             AccessibilityVoiceService.shared.speak(
                 speechService.isIndonesian
-                    ? "Langkah 2 dari 4: Atur TestApp. Aktifkan izin kamera dan mikrofon, serta atur Akses Cepat untuk Tombol Tindakan. Ketuk Lanjutkan jika sudah siap."
+                    ? "Langkah 2 dari 4: Atur TestApp. Aktifkan izin kamera dan mikrofon, serta atur Akses Cepat untuk Tombol Tindakan. Ketuk Lanjut jika sudah siap."
                     : "Step 2 of 4: Set Up TestApp. Enable camera and microphone permissions, and optionally set up Quick Access for your Action Button. Tap Continue when ready.",
                 languageCode: speechService.selectedLocale.identifier
             )

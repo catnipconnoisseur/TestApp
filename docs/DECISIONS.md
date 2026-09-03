@@ -209,3 +209,20 @@ DESCRIPTION: [1-3 sentence explanation]
 **Rejected Alternatives:**
 1. *Pure Core ML Architecture:* Completely rejected because it strips the app of all conversational and open-domain visual reasoning capabilities.
 2. *Speculative Model Bundling:* Rejected adding placeholder or small un-benchmarked `.mlmodel` files to prevent shipping untested binary weight without a demonstrated user need.
+
+---
+
+## D019 — First-Time Onboarding Language Selection as App-Wide Source of Truth
+
+**Decision:** Language preference is selected immediately on the first-time Welcome onboarding page and becomes the single, app-wide source of truth for UI localization, speech recognition locale, Gemini output language, accessibility strings, and fallback messages.
+
+**Why:**
+- **Zero Duplication:** Reuses the existing `selectedLanguageCode` stored in `UserDefaults.standard` rather than creating parallel settings (e.g. `onboardingLanguage`, `geminiLanguage`, etc.).
+- **Immediate Reactive UI:** Tapping a language choice (English or Bahasa Indonesia) reactively updates the Welcome screen, the bottom action button ("Continue" / "Lanjut"), and all downstream onboarding steps (Permissions / Setup, Try Asking, Get Started) without restarting the app.
+- **Sensible Default:** Defaults to Indonesian (`id-ID`) if the device's system language is Indonesian; otherwise defaults to English (`en-US`), while keeping both explicit options visible on the Welcome page.
+- **VoiceOver First-Class Semantics:** Language options use native accessibility traits (`.isButton`, `.isSelected`), shape/badge/border visual selection states (not color alone), and follow a strict, uncluttered 6-step reading order (App Title → Value Statement → "Choose your language" → English → Bahasa Indonesia → Continue) with zero clashing automated voice announcements.
+- **Unified Flow:** Preserves onboarding for returning users while keeping language customizable at any time via the existing Settings sheet.
+
+**Rejected Alternatives:**
+1. *Adding a separate dedicated language picker step in onboarding:* Rejected because introducing a 5th onboarding screen adds unnecessary friction when language selection naturally belongs on the initial Welcome screen.
+2. *Relying solely on system language without explicit choice:* Rejected because users (especially bilingual or assistive technology users) frequently prefer speaking to and hearing responses from their visual assistant in a specific language distinct from their iOS system language.

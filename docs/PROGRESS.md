@@ -141,7 +141,10 @@
 
 ## Current Status
 
-**T001–T013 Complete.** The entire C4 challenge prototype is clean, robustly structured, and verified.
+**T001–T013 Complete + First-Time Onboarding Language Selection Implemented.**
+- Welcome onboarding refined with immediate language selection (English vs Bahasa Indonesia)
+- Integrated into single authoritative preference (`UserDefaults: selectedLanguageCode`)
+- Fully verified with VoiceOver and build verification
 
 ---
 
